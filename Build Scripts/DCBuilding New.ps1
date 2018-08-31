@@ -1,9 +1,12 @@
-﻿# ------vCenter Targeting Varibles and Connection Commands Below------
+﻿#Script Version 1.1
+$Ver = "v1.1"
+
+# ------vCenter Targeting Varibles and Connection Commands Below------
 # This section insures that the PowerCLI PowerShell Modules are currently active. The pipe to Out-Null can be removed if you desire additional
 # Console output.
 Get-Module -ListAvailable VMware* | Import-Module | Out-Null
 
-# ------vSphere Targeting Variables tracked below------
+# ------vSphere Targeting Variables tracked below------TE
 $creds = Get-Credential -Message 'Please Enter vCenter Credentials'
 $User = $creds.UserName
 
@@ -19,6 +22,22 @@ $script:customernumber = Read-Host -Prompt "Please enter customer vLAN "
 
 $script:Cluster = Read-Host -Prompt "Is this Production or NonProduction?(P Or NP) "
 
+if ($script:Cluster -eq 'NP') {$Type = Read-Host -Prompt "Is this Test, Dev or QA?(T, D or Q)"}
+
+if ($Script:Cluster -eq 'P') {$Char = 'P'}
+
+elseif ($Type -eq 'T') {$Char = 'T'}
+
+elseif ($Type -eq 'D') {$Char = 'D'}
+
+elseif ($Type -eq 'Q') {$Char = 'Q'}  
+
+$FCS = Read-Host -Prompt "Do you have FCS Servers? (Yes or No) "
+
+$IEE = Read-Host -Prompt "Do you have IEE Servers? (Yes or No) "
+
+$PM = Read-Host -Prompt "Do you have PM Servers? (Yes or No) "
+
 if ($script:Cluster -eq 'P') {$TargetCluster = Get-Cluster -Name "ItronMS-TP-LL-UCS-PROD";$DomainControllerVMName = "$script:customer-P-DC01";$DC02VMName = "$script:customer-P-DC02"}
 
 if ($script:Cluster -eq 'NP') {$TargetCluster = Get-Cluster -Name "ItronMS-TP-LL-UCS-DEV";$DomainControllerVMName = "$script:customer-NP-DC01";$DC02VMName = "$script:customer-NP-DC02"}
@@ -27,7 +46,8 @@ $UIP = ($script:customernumber - 500)
 
 $Dom = $script:customer + "AMI.local"
 
-$NP = $script:customer + "NP" 
+if ($script:Cluster -eq 'P') {$NP = $script:customer}
+elseif ($script:Cluster -eq 'NP') {$NP = $script:customer + "NP"}
 
 #Create and setup VDS Groups for the customer
 
@@ -35,22 +55,20 @@ if ($script:Cluster -eq 'P'){
 
 $Referencegroup= Get-VDPortgroup -Name "vLAN-0504-ACR-App"
 
-New-VDPortgroup -VDSwitch Data-Dswitch -Name vLAN-0$script:customernumber-$script:customer-App -ReferencePortgroup $Referencegroup | Set-VDPortgroup -VlanId $script:customernumber
+New-VDPortgroup -VDSwitch Data-Dswitch -Name vLAN-0$script:customernumber-$NP-App -ReferencePortgroup $Referencegroup | Set-VDPortgroup -VlanId $script:customernumber
 
-New-VDPortgroup -VDSwitch Data-Dswitch -Name vLAN-1$script:customernumber-$script:customer-DB -ReferencePortgroup $Referencegroup | Set-VDPortgroup -VlanId $script:customernumber -NumPorts 8
+New-VDPortgroup -VDSwitch Data-Dswitch -Name vLAN-1$script:customernumber-$NP-DB -ReferencePortgroup $Referencegroup | Set-VDPortgroup -VlanId 1$script:customernumber -NumPorts 8
 
-New-VDPortgroup -VDSwitch Data-Dswitch -Name vLAN-2$script:customernumber-$script:customer-DMZ -ReferencePortgroup $Referencegroup | Set-VDPortgroup -VlanId $script:customernumber -NumPorts 8
+New-VDPortgroup -VDSwitch Data-Dswitch -Name vLAN-2$script:customernumber-$NP-DMZ -ReferencePortgroup $Referencegroup | Set-VDPortgroup -VlanId 2$script:customernumber -NumPorts 8
 }
 
-elseif ($script:Cluster -eq 'NP') {
-
-$Referencegroup= Get-VDPortgroup -Name "vLAN-0504-ACR-App"
+elseif ($script:Cluster -eq 'NP'){$Referencegroup= Get-VDPortgroup -Name "vLAN-0504-ACR-App"
 
 New-VDPortgroup -VDSwitch Data-Dswitch -Name vLAN-0$script:customernumber-$NP-App -ReferencePortgroup $Referencegroup | Set-VDPortgroup -VlanId $script:customernumber
 
-New-VDPortgroup -VDSwitch Data-Dswitch -Name vLAN-1$script:customernumber-$NP-DB -ReferencePortgroup $Referencegroup | Set-VDPortgroup -VlanId $script:customernumber -NumPorts 8
+New-VDPortgroup -VDSwitch Data-Dswitch -Name vLAN-1$script:customernumber-$NP-DB -ReferencePortgroup $Referencegroup | Set-VDPortgroup -VlanId 1$script:customernumber -NumPorts 8
 
-New-VDPortgroup -VDSwitch Data-Dswitch -Name vLAN-2$script:customernumber-$NP-DMZ -ReferencePortgroup $Referencegroup | Set-VDPortgroup -VlanId $script:customernumber -NumPorts 8
+New-VDPortgroup -VDSwitch Data-Dswitch -Name vLAN-2$script:customernumber-$NP-DMZ -ReferencePortgroup $Referencegroup | Set-VDPortgroup -VlanId 2$script:customernumber -NumPorts 8
 }
 
 # ------Virtual Machine Targeting Variables tracked below------
@@ -69,7 +87,6 @@ if ($script:Cluster -eq 'P') { $Folder = $script:customer}
 if ($script:Cluster -eq 'NP') { $Folder = "$script:customer-NP"}
 
 New-Folder -Name $Folder -Location Customers
-
  
  
 # ------This section contains the commands for defining the IP and networking settings for the new virtual machines------
@@ -78,28 +95,19 @@ New-Folder -Name $Folder -Location Customers
 # Domain Controller VM IPs Below
 # NOTE: Insert IP info in $IP Variable
  
-$DCNetworkSettings = ' $IP = "89";
+$DCNetworkSettings = ' $IP = "93";
                        netsh interface ip set address "Ethernet0" static 10.50.$IP.11 255.255.255.0 10.50.$IP.1'
 
 
 # DC02 VM IPs Below in $IP Variable
 
-$DC02NetworkSettings = '$IP = "89";
+$DC02NetworkSettings = '$IP = "93";
                         netsh interface ip set address "Ethernet0" static 10.50.$IP.12 255.255.255.0 10.50.$IP.1'
 
 # NOTE: DNS Server IP Below in $IP Variable
 
-$DNSSettings = '$IP = "89";
+$DNSSettings = '$IP = "93";
                     Set-DnsClientServerAddress -InterfaceAlias "Ethernet0" -ServerAddresses("10.50.$IP.11","10.50.$IP.12")'
-
-$InstallDNSZones = '$IP = "89";
-                    Set-DnsServerForwarder -IPAddress ("10.51.100.101","10.51.100.102","fdfa:ffff:0:200:10:51:100:101","fdfa:ffff:0:200:10:51:100:102") 
-                    Add-DnsServerPrimaryZone -NetworkID "10.50.$IP.0/24" -ReplicationScope Forest -DynamicUpdate NonsecureAndSecure;
-                    Add-DnsServerPrimaryZone -NetworkID "10.150.$IP.0/24" -ReplicationScope Forest -DynamicUpdate NonsecureAndSecure;
-                    Add-DnsServerPrimaryZone -NetworkID "10.250.$IP.0/24" -ReplicationScope Forest -DynamicUpdate NonsecureAndSecure;
-                    Add-DnsServerPrimaryZone -NetworkID "fdfa:ffff:0:5$IP::/64" -ReplicationScope Forest -DynamicUpdate NonsecureAndSecure;
-                    Add-DnsServerPrimaryZone -NetworkID "fdfa:ffff:0:15$IP::/64" -ReplicationScope Forest -DynamicUpdate NonsecureAndSecure;
-                    Add-DnsServerPrimaryZone -NetworkID "fdfa:ffff:0:25$IP::/64" -ReplicationScope Forest -DynamicUpdate NonsecureAndSecure'
 
 
  
@@ -123,6 +131,10 @@ $DC02LocalCredential = New-Object -TypeName System.Management.Automation.PSCrede
 $DomainUser = "$script:customerAMI\administrator"
 $DomainPWord = ConvertTo-SecureString -String "cl0ckw!SE" -AsPlainText -Force
 $DomainCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $DomainUser, $DomainPWord 
+
+$DomainUser2 = "$script:customerAMI\ihostadmin"
+$DomainPWord2 = ConvertTo-SecureString -String "cl0ckw!SE" -AsPlainText -Force
+$DomainCredential2 = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $DomainUser2, $DomainPWord2 
  
  
  
@@ -130,7 +142,7 @@ $DomainCredential = New-Object -TypeName System.Management.Automation.PSCredenti
 
 # This Scriptblock is used to add new VMs to the newly created domain by first defining the domain creds on the machine and then using Add-Computer
 
-$JoinNewDomain = '$Code = "LLTPNP";
+$JoinNewDomain = '$Code = "LLTP";
                   $Domain = $Code + "AMI.local"
                   $DomainUser = "$Domain\Administrator";
                   $DomainPWord = ConvertTo-SecureString -String "cl0ckw!SE" -AsPlainText -Force;
@@ -149,7 +161,7 @@ $InstallADTools = ' Add-windowsfeature rsat-adds -includeallsubfeature'
 
 # This Scriptblock will define settings for a new AD Forest and then provision it with said settings. 
 # NOTE - Make sure to define the DSRM Password below in the line below that defines the $DSRMPWord Variable!!!!
-$ConfigureNewDomain =  '$Code = "LLTPNP";
+$ConfigureNewDomain =  '$Code = "LLTP";
                        $DomainName = $Code + "AMI.local"
                        $DomainMode = "Win2012R2";
                        $ForestMode = "Win2012R2";
@@ -158,7 +170,7 @@ $ConfigureNewDomain =  '$Code = "LLTPNP";
 
 # ------This Section Contains the Scripts to be executed against DC02 VMs------
 
-$InstallDC02Role =    '$Code = "LLTPNP";
+$InstallDC02Role =    '$Code = "LLTP";
                        $DomainName = $Code + "AMI.local"
                        $DomainMode = "Win2012R2";
                        $ForestMode = "Win2012R2";
@@ -168,14 +180,21 @@ $InstallDC02Role =    '$Code = "LLTPNP";
                        $DSRMPWord = ConvertTo-SecureString -String "p@ssw0rd" -AsPlainText -Force;
                        Install-ADDSDomainController -DomainName $DomainName -Credential $DomainCredential -InstallDns -SafeModeAdministratorPassword $DSRMPWord -Force'
 
-
+$InstallDNSZones = '$IP = "93";
+                    Set-DnsServerForwarder -IPAddress ("10.51.100.101","10.51.100.102","fdfa:ffff:0:200:10:51:100:101","fdfa:ffff:0:200:10:51:100:102") 
+                    Add-DnsServerPrimaryZone -NetworkID "10.50.$IP.0/24" -ReplicationScope Forest -DynamicUpdate NonsecureAndSecure;
+                    Add-DnsServerPrimaryZone -NetworkID "10.150.$IP.0/24" -ReplicationScope Forest -DynamicUpdate NonsecureAndSecure;
+                    Add-DnsServerPrimaryZone -NetworkID "10.250.$IP.0/24" -ReplicationScope Forest -DynamicUpdate NonsecureAndSecure;
+                    Add-DnsServerPrimaryZone -NetworkID "fdfa:ffff:0:5$IP::/64" -ReplicationScope Forest -DynamicUpdate NonsecureAndSecure;
+                    Add-DnsServerPrimaryZone -NetworkID "fdfa:ffff:0:15$IP::/64" -ReplicationScope Forest -DynamicUpdate NonsecureAndSecure;
+                    Add-DnsServerPrimaryZone -NetworkID "fdfa:ffff:0:25$IP::/64" -ReplicationScope Forest -DynamicUpdate NonsecureAndSecure'
 
 $InstallDNSZones2 = 'Set-DnsServerForwarder -IPAddress ("10.51.100.101","10.51.100.102","fdfa:ffff:0:200:10:51:100:101","fdfa:ffff:0:200:10:51:100:102")'
 
 
 # ----------------This Section Contains the Scripts to Setup Groups and Users-----------
 
-$OU =  '$Code = "LLTPNP";
+$OU =  '$Code = "LLTP";
         $Domain = $Code + "AMI"
         New-ADOrganizationalUnit -Name Customers -Path "DC=$Domain,DC=local";
         New-ADOrganizationalUnit -Name Itron -Path "DC=$Domain,DC=local";
@@ -189,7 +208,7 @@ $OU =  '$Code = "LLTPNP";
         New-ADOrganizationalUnit -Name Service_Accounts -Path "OU=Itron,DC=$Domain,DC=local";
         New-ADOrganizationalUnit -Name Groups -Path "OU=Itron,DC=$Domain,DC=local";'
 
-$Group1 = '$Code = "LLTPNP";
+$Group1 = '$Code = "LLTP";
            $Domain = $Code + "AMI";
            $IEE = $Code  + "_APP_P_IEE_Admin";
            $IEE2 = $Code  + "_APP_P_IEE_User";
@@ -209,7 +228,7 @@ $Group1 = '$Code = "LLTPNP";
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND2 -SamAccountName $FND2 -DisplayName $FND2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";'
 
 
-$Group1Test = '$Code = "LLTPNP";
+$Group1Test = '$Code = "LLTP";
                $Domain = $Code + "AMI";
                $IEE = $Code  + "_APP_T_IEE_Admin";
                $IEE2 = $Code  + "_APP_T_IEE_User";
@@ -230,7 +249,49 @@ $Group1Test = '$Code = "LLTPNP";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND1 -SamAccountName $FND1 -DisplayName $FND -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND2 -SamAccountName $FND2 -DisplayName $FND2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";'
 
-$Group2 = '$Code = "LLTPNP"
+$Group1Dev = '$Code = "LLTP";
+               $Domain = $Code + "AMI";
+               $IEE = $Code  + "_APP_D_IEE_Admin";
+               $IEE2 = $Code  + "_APP_D_IEE_User";
+               $IEE3 = $Code  + "_APP_D_IEECSR_User";
+               $ISM = $Code  + "_APP_D_ISM_Admin";
+               $ISM2 = $Code  + "_APP_D_ISM_User";
+               $FND = $Code + "_FND_Admin";
+               $FND1 = $Code + "_FND_Endpoint_Operator";
+               $FND2 = $Code + "_FND_Monitor_Only";
+               $ErrorActionPreference = "SilentlyContinue"
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND -SamAccountName $FND -DisplayName $FND -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               $ErrorActionPreference = "Continue"
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $IEE -SamAccountName $IEE -DisplayName $IEE -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $IEE2 -SamAccountName $IEE2 -DisplayName $IEE2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $IEE3 -SamAccountName $IEE3 -DisplayName $IEE3 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $ISM -SamAccountName $ISM -DisplayName $ISM -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $ISM2 -SamAccountName $ISM2 -DisplayName $ISM2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND1 -SamAccountName $FND1 -DisplayName $FND -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND2 -SamAccountName $FND2 -DisplayName $FND2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";'
+
+$Group1QA = '$Code = "LLTP";
+               $Domain = $Code + "AMI";
+               $IEE = $Code  + "_APP_QA_IEE_Admin";
+               $IEE2 = $Code  + "_APP_QA_IEE_User";
+               $IEE3 = $Code  + "_APP_QA_IEECSR_User";
+               $ISM = $Code  + "_APP_QA_ISM_Admin";
+               $ISM2 = $Code  + "_APP_QA_ISM_User";
+               $FND = $Code + "_FND_Admin";
+               $FND1 = $Code + "_FND_Endpoint_Operator";
+               $FND2 = $Code + "_FND_Monitor_Only";
+               $ErrorActionPreference = "SilentlyContinue"
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND -SamAccountName $FND -DisplayName $FND -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               $ErrorActionPreference = "Continue"
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $IEE -SamAccountName $IEE -DisplayName $IEE -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $IEE2 -SamAccountName $IEE2 -DisplayName $IEE2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $IEE3 -SamAccountName $IEE3 -DisplayName $IEE3 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $ISM -SamAccountName $ISM -DisplayName $ISM -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $ISM2 -SamAccountName $ISM2 -DisplayName $ISM2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND1 -SamAccountName $FND1 -DisplayName $FND -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND2 -SamAccountName $FND2 -DisplayName $FND2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";'
+
+$Group2 = '$Code = "LLTP"
            $Domain = $Code + "AMI"
            $FND = $Code + "_FND_NBAPI"
            $FND2 = $Code + "_FND_Root"
@@ -245,7 +306,7 @@ $Group2 = '$Code = "LLTPNP"
            New-ADGroup -GroupScope 1 -GroupCategory Security -Name $Meter -SamAccountName $Meter -DisplayName $Meter -Path "OU=Meters,OU=Customers,DC=$Domain,DC=local";
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $SVC -SamAccountName $SVC -DisplayName $SVC -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local";'
 
-$Group3 = '$Code = "LLTPNP"
+$Group3 = '$Code = "LLTP"
            $Domain = $Code + "AMI"
            $Admin = $Code + "_Admin"
            $OW = $Code + "_APP_P_OWCEUI_Admin"
@@ -263,7 +324,7 @@ $Group3 = '$Code = "LLTPNP"
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $User -SamAccountName $User -DisplayName $User -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";'
 
 
-$Group3Test = '$Code = "LLTPNP"
+$Group3Test = '$Code = "LLTP"
                $Domain = $Code + "AMI"
                $Admin = $Code + "_Admin"
                $OW = $Code + "_APP_T_OWCEUI_Admin"
@@ -280,7 +341,42 @@ $Group3Test = '$Code = "LLTPNP"
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $TS -SamAccountName $TS -DisplayName $TS -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $User -SamAccountName $User -DisplayName $User -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";'
 
-$Group4 = '$Code = "LLTPNP"
+$Group3Dev = '$Code = "LLTP"
+               $Domain = $Code + "AMI"
+               $Admin = $Code + "_Admin"
+               $OW = $Code + "_APP_D_OWCEUI_Admin"
+               $OW2 = $Code + "_APP_D_OWCEUI_User"
+               $DBA = $Code + "_DBA"
+               $DBU =  $Code + "_DBU"
+               $TS = $Code + "_TS_User"
+               $User = $Code + "_Users"
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $Admin -SamAccountName $Admin -DisplayName $Admin -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $OW -SamAccountName $OW -DisplayName $Admin -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $OW2 -SamAccountName $OW2 -DisplayName $OW2 -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $DBA -SamAccountName $DBA -DisplayName $DBA -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $DBU -SamAccountName $DBU -DisplayName $DBU -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $TS -SamAccountName $TS -DisplayName $TS -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $User -SamAccountName $User -DisplayName $User -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";'
+
+$Group3QA = '$Code = "LLTP"
+               $Domain = $Code + "AMI"
+               $Admin = $Code + "_Admin"
+               $OW = $Code + "_APP_QA_OWCEUI_Admin"
+               $OW2 = $Code + "_APP_QA_OWCEUI_User"
+               $DBA = $Code + "_DBA"
+               $DBU =  $Code + "_DBU"
+               $TS = $Code + "_TS_User"
+               $User = $Code + "_Users"
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $Admin -SamAccountName $Admin -DisplayName $Admin -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $OW -SamAccountName $OW -DisplayName $Admin -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $OW2 -SamAccountName $OW2 -DisplayName $OW2 -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $DBA -SamAccountName $DBA -DisplayName $DBA -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $DBU -SamAccountName $DBU -DisplayName $DBU -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $TS -SamAccountName $TS -DisplayName $TS -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $User -SamAccountName $User -DisplayName $User -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";'
+
+
+$Group4 = '$Code = "LLTP"
            $Domain = $Code + "AMI"
            $Admin = "Itron Admins"
            $DBA = "Itron DBA"
@@ -291,7 +387,7 @@ $Group4 = '$Code = "LLTPNP"
 
 
 
-$Users =  '$Code = "LLTPNP";
+$Users =  '$Code = "LLTP";
           $Domain = $Code + "AMI"
           $CA = $Code + "PCASVC";
           $IEE2 = $Code + "PIEEDA";
@@ -308,7 +404,7 @@ $Users =  '$Code = "LLTPNP";
           New-ADUser -Name $ISM2 -GivenName $ISM2 -SamAccountName $ISM2 -Surname "Service" -DisplayName $ISM2 -UserPrincipalName "$ISM2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1'
 
 
-$UsersTest =  '$Code = "LLTPNP";
+$UsersTest =  '$Code = "LLTP";
                $Domain = $Code + "AMI"
                $CA = $Code + "TCASVC";
                $IEE2 = $Code + "TIEEDA";
@@ -324,8 +420,40 @@ $UsersTest =  '$Code = "LLTPNP";
                New-ADUser -Name $ISM -GivenName $ISM -SamAccountName $ISM -Surname "Service" -DisplayName $ISM -UserPrincipalName "$ISM@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
                New-ADUser -Name $ISM2 -GivenName $ISM2 -SamAccountName $ISM2 -Surname "Service" -DisplayName $ISM2 -UserPrincipalName "$ISM2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1'
 
+$UsersDev =  '$Code = "LLTP";
+               $Domain = $Code + "AMI"
+               $CA = $Code + "DCASVC";
+               $IEE2 = $Code + "DIEEDA";
+               $IEE = $Code + "DIEEDB";  
+               $FCS = $Code + "DFVCSVC";
+               $IEE3 = $Code + "DIEESVC";
+               $ISM = $Code + "DISMAdmin";
+               $ISM2 = $Code + "DISMDB";
+               New-ADUser -Name $CA -GivenName $CA -SamAccountName $CA -Surname "Service" -DisplayName $CA -UserPrincipalName "$CA@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
+               New-ADUser -Name $IEE2 -GivenName $IEE2 -SamAccountName $IEE2 -Surname "Service" -DisplayName $IEE2 -UserPrincipalName "$IEE2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
+               New-ADUser -Name $FCS -GivenName $FCS -SamAccountName $FCS -Surname "Service" -DisplayName $FCS -UserPrincipalName "$FCS@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
+               New-ADUser -Name $IEE3 -GivenName $IEE3 -SamAccountName $IEE3 -Surname "Service" -DisplayName $IEE3 -UserPrincipalName "$IEE3@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
+               New-ADUser -Name $ISM -GivenName $ISM -SamAccountName $ISM -Surname "Service" -DisplayName $ISM -UserPrincipalName "$ISM@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
+               New-ADUser -Name $ISM2 -GivenName $ISM2 -SamAccountName $ISM2 -Surname "Service" -DisplayName $ISM2 -UserPrincipalName "$ISM2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1'
 
-$Users2 = '$Code = "LLTPNP"
+$UsersQA =  '$Code = "LLTP";
+               $Domain = $Code + "AMI"
+               $CA = $Code + "QACASVC";
+               $IEE2 = $Code + "QAIEEDA";
+               $IEE = $Code + "QAIEEDB";  
+               $FCS = $Code + "QAFVCSVC";
+               $IEE3 = $Code + "QAIEESVC";
+               $ISM = $Code + "QAISMAdmin";
+               $ISM2 = $Code + "QAISMDB";
+               New-ADUser -Name $CA -GivenName $CA -SamAccountName $CA -Surname "Service" -DisplayName $CA -UserPrincipalName "$CA@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
+               New-ADUser -Name $IEE2 -GivenName $IEE2 -SamAccountName $IEE2 -Surname "Service" -DisplayName $IEE2 -UserPrincipalName "$IEE2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
+               New-ADUser -Name $FCS -GivenName $FCS -SamAccountName $FCS -Surname "Service" -DisplayName $FCS -UserPrincipalName "$FCS@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
+               New-ADUser -Name $IEE3 -GivenName $IEE3 -SamAccountName $IEE3 -Surname "Service" -DisplayName $IEE3 -UserPrincipalName "$IEE3@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
+               New-ADUser -Name $ISM -GivenName $ISM -SamAccountName $ISM -Surname "Service" -DisplayName $ISM -UserPrincipalName "$ISM@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
+               New-ADUser -Name $ISM2 -GivenName $ISM2 -SamAccountName $ISM2 -Surname "Service" -DisplayName $ISM2 -UserPrincipalName "$ISM2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1'
+
+
+$Users2 = '$Code = "LLTP"
            $Domain = $Code + "AMI"
            $ISM3 = $Code + "PISMEXTCon";
            $ISM4 = $Code + "PISMSVC";
@@ -339,7 +467,7 @@ $Users2 = '$Code = "LLTPNP"
            New-ADUser -Name $IEE -GivenName $IEE -SamAccountName $IEE -Surname "Service" -DisplayName $IEE -UserPrincipalName "$IEE@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1'
 
 
-$Users2Test = '$Code = "LLTPNP"
+$Users2Test = '$Code = "LLTP"
                $Domain = $Code + "AMI"
                $ISM3 = $Code + "TISMEXTCon";
                $ISM4 = $Code + "TISMSVC";
@@ -352,8 +480,34 @@ $Users2Test = '$Code = "LLTPNP"
                New-ADUser -Name $OW2 -GivenName $OW2 -SamAccountName $OW2 -Surname "Service" -DisplayName $OW2 -UserPrincipalName "$OW2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
                New-ADUser -Name $IEE -GivenName $IEE -SamAccountName $IEE -Surname "Service" -DisplayName $IEE -UserPrincipalName "$IEE@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1'
 
+$Users2Dev = '$Code = "LLTP"
+               $Domain = $Code + "AMI"
+               $ISM3 = $Code + "DISMEXTCon";
+               $ISM4 = $Code + "DISMSVC";
+               $OW = $Code + "DOWAPP";
+               $IEE = $Code + "DIEEDB"; 
+               $OW2 = $Code + "DOWDB";
+               New-ADUser -Name $ISM3 -GivenName $ISM3 -SamAccountName $ISM3 -Surname "Service" -DisplayName $ISM3 -UserPrincipalName "$ISM3@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1; 
+               New-ADUser -Name $ISM4 -GivenName $ISM4 -SamAccountName $ISM4 -Surname "Service" -DisplayName $ISM4 -UserPrincipalName "$ISM4@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;                
+               New-ADUser -Name $OW -GivenName $OW -SamAccountName $OW -Surname "Service" -DisplayName $OW -UserPrincipalName "$OW@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;        
+               New-ADUser -Name $OW2 -GivenName $OW2 -SamAccountName $OW2 -Surname "Service" -DisplayName $OW2 -UserPrincipalName "$OW2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
+               New-ADUser -Name $IEE -GivenName $IEE -SamAccountName $IEE -Surname "Service" -DisplayName $IEE -UserPrincipalName "$IEE@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1'
 
-$Users3 =  '$Code = "LLTPNP";
+$Users2Dev = '$Code = "LLTP"
+               $Domain = $Code + "AMI"
+               $ISM3 = $Code + "QAISMEXTCon";
+               $ISM4 = $Code + "QAISMSVC";
+               $OW = $Code + "QAOWAPP";
+               $IEE = $Code + "QAIEEDB"; 
+               $OW2 = $Code + "QAOWDB";
+               New-ADUser -Name $ISM3 -GivenName $ISM3 -SamAccountName $ISM3 -Surname "Service" -DisplayName $ISM3 -UserPrincipalName "$ISM3@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1; 
+               New-ADUser -Name $ISM4 -GivenName $ISM4 -SamAccountName $ISM4 -Surname "Service" -DisplayName $ISM4 -UserPrincipalName "$ISM4@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;                
+               New-ADUser -Name $OW -GivenName $OW -SamAccountName $OW -Surname "Service" -DisplayName $OW -UserPrincipalName "$OW@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;        
+               New-ADUser -Name $OW2 -GivenName $OW2 -SamAccountName $OW2 -Surname "Service" -DisplayName $OW2 -UserPrincipalName "$OW2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
+               New-ADUser -Name $IEE -GivenName $IEE -SamAccountName $IEE -Surname "Service" -DisplayName $IEE -UserPrincipalName "$IEE@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1'
+
+
+$Users3 =  '$Code = "LLTP";
             $Domain = $Code + "AMI";
             New-ADUser -Name "Prabhu Armugam" -GivenName "Prabhu" -Surname "Armugam" -DisplayName "Prabhu Armugam" -SamAccountName "PArmugam" -UserPrincipalName "PArmugam@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
             New-ADUser -Name "Nishighandha" -GivenName "Nishighandha" -Surname "Kulkarni" -DisplayName "Nishighandha Kulkarni"-SamAccountName "NKulkarni" -UserPrincipalName "NKulkarni@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
@@ -362,7 +516,7 @@ $Users3 =  '$Code = "LLTPNP";
             New-ADUser -Name "Ajmal Firdose" -GivenName "Ajmal" -Surname "Firdose" -DisplayName "Ajmal Firdose" -SamAccountName "AFirdose" -UserPrincipalName "AFirdose@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
             New-ADUser -Name "James Scott" -GivenName "James" -Surname "Scott" -DisplayName "James Scott" -SamAccountName "JScott" -UserPrincipalName "JScott@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;'
 
-$Users4 =   '$Code = "LLTPNP";
+$Users4 =   '$Code = "LLTP";
             $Domain = $Code + "AMI";
             New-ADUser -Name "Pavithra Ramani" -GivenName "Pavithra" -Surname "Ramani" -DisplayName "Pavithra Ramani" -SamAccountName "PRamani" -UserPrincipalName "PRamani@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
             New-ADUser -Name "Muthuraman" -GivenName "Muthuraman" -Surname "Pattavarayan" -DisplayName "Muthuraman Pattavarayan" -SamAccountName "MPattavarayan" -UserPrincipalName "MPattavarayan@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
@@ -372,7 +526,7 @@ $Users4 =   '$Code = "LLTPNP";
             New-ADUser -Name "Lance Pelton" -GivenName "Lance" -Surname "Pelton" -DisplayName "Lance Pelton" -UserPrincipalName "LPelton@$Domain.local" -SamAccountName "LPelton" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;'
 
 
-$Users5 =   '$Code = "LLTPNP";
+$Users5 =   '$Code = "LLTP";
             $Domain = $Code + "AMI";
             New-ADUser -Name "Sateesh Poojari" -GivenName "Sateesh" -Surname "Poojari" -DisplayName "Sateesh Poojari" -SamAccountName "Spoojari"  -UserPrincipalName "SPoojari@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
             New-ADUser -Name "Shahab Khan" -GivenName "Shahab" -Surname "Khan" -DisplayName "Shahab Khan" -SamAccountName "SKhan"  -UserPrincipalName "SKhan@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
@@ -383,7 +537,7 @@ $Users5 =   '$Code = "LLTPNP";
             New-ADUser -Name "Tom Moldovan" -GivenName "Tom" -Surname "Moldovan" -DisplayName "Tom Moldovan" -SamAccountName "TMoldovan"  -UserPrincipalName "TMoldovan@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;'           
 
 
-$Users6 =   '$Code = "LLTPNP";
+$Users6 =   '$Code = "LLTP";
             $Domain = $Code + "AMI";
             New-ADUser -Name "nmsconfig" -GivenName "nmsconfig" -Surname "nmsconfig" -DisplayName "nmsconfig" -SamAccountName "nmsconfig"  -UserPrincipalName "nmsconfig@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
             New-ADUser -Name "RDS_Interface" -GivenName "RDS_Interface" -Surname "RDS_Interface" -DisplayName "RDS_Interface" -SamAccountName "RDS_Interface"  -UserPrincipalName "RDS_Interface@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
@@ -391,7 +545,7 @@ $Users6 =   '$Code = "LLTPNP";
 
 $GroupAdd1 = 'Add-ADGroupMember -Identity "Domain Admins" -Members @("PArmugam","NKulkarni","DGovindu","AManoharan","AFirdose","JScott","PRamani","MPattavarayan","MMurugesan","KNail","MElliott","LPelton","SPoojari","SKhan","SApparsami","SRizvi","BBihari","SNatarajan","TMoldovan")'
 
-$GroupAdd2 = '$Code = "LLTPNP"     
+$GroupAdd2 = '$Code = "LLTP"     
               $CA = $Code + "PCASVC";
               $IEE2 = $Code + "PIEEDA";
               $IEE = $Code + "PIEEDB";  
@@ -418,7 +572,7 @@ $GroupAdd2 = '$Code = "LLTPNP"
               Add-ADGroupMember -Identity $Group6 -Members @("$OW");
               Add-ADGroupMember -Identity $Group7 -Members @("$OW");'
 
-$GroupAddTest2 = '$Code = "LLTPNP"     
+$GroupAddTest2 = '$Code = "LLTP"     
               $CA = $Code + "TCASVC";
               $IEE2 = $Code + "TIEEDA";
               $IEE = $Code + "TIEEDB";  
@@ -445,9 +599,63 @@ $GroupAddTest2 = '$Code = "LLTPNP"
               Add-ADGroupMember -Identity $Group6 -Members @("$OW");
               Add-ADGroupMember -Identity $Group7 -Members @("$OW");'
 
+$GroupAddDev2 = '$Code = "LLTP"     
+              $CA = $Code + "DCASVC";
+              $IEE2 = $Code + "DIEEDA";
+              $IEE = $Code + "DIEEDB";  
+              $FCS = $Code + "DFVCSVC";
+              $IEE3 = $Code + "DIEESVC";
+              $ISM = $Code + "DISMAdmin";
+              $ISM2 = $Code + "DISMDB";
+              $ISM3 = $Code + "DISMEXTCon";
+              $ISM4 = $Code + "DISMSVC";
+              $OW = $Code + "DOWAPP";
+              $OW2 = $Code + "DOWDB";
+              $Group1 = $Code + "_ServiceAccount";
+              $Group2 = $Code  + "_APP_D_IEE_Admin";
+              $Group3 = $Code + "_APP_D_IEE_User";
+              $Group4 = $Code + "_APP_D_ISM_Admin";
+              $Group5 = $Code + "_APP_D_ISM_User";
+              $Group6 = $Code + "_APP_D_OWCEUI_Admin";
+              $Group7 = $Code + "_APP_D_OWCEUI_User";
+              Add-ADGroupMember -Identity $Group1 -Members @("$CA","$FCS","$IEE3","$IEE","$ISM2","$ISM3","$ISM4");
+              Add-ADGroupMember -Identity $Group2 -Members @("$IEE2");
+              Add-ADGroupMember -Identity $Group3 -Members @("$IEE2");
+              Add-ADGroupMember -Identity $Group4 -Members @("$ISM");
+              Add-ADGroupMember -Identity $Group5 -Members @("$ISM");
+              Add-ADGroupMember -Identity $Group6 -Members @("$OW");
+              Add-ADGroupMember -Identity $Group7 -Members @("$OW");'
+
+$GroupAddQA2 = '$Code = "LLTP"     
+              $CA = $Code + "QACASVC";
+              $IEE2 = $Code + "QAIEEDA";
+              $IEE = $Code + "QAIEEDB";  
+              $FCS = $Code + "QAFVCSVC";
+              $IEE3 = $Code + "QAIEESVC";
+              $ISM = $Code + "QAISMAdmin";
+              $ISM2 = $Code + "QAISMDB";
+              $ISM3 = $Code + "QAISMEXTCon";
+              $ISM4 = $Code + "QAISMSVC";
+              $OW = $Code + "QAOWAPP";
+              $OW2 = $Code + "QAOWDB";
+              $Group1 = $Code + "_ServiceAccount";
+              $Group2 = $Code  + "_APP_QA_IEE_Admin";
+              $Group3 = $Code + "_APP_QA_IEE_User";
+              $Group4 = $Code + "_APP_QA_ISM_Admin";
+              $Group5 = $Code + "_APP_QA_ISM_User";
+              $Group6 = $Code + "_APP_QA_OWCEUI_Admin";
+              $Group7 = $Code + "_APP_QA_OWCEUI_User";
+              Add-ADGroupMember -Identity $Group1 -Members @("$CA","$FCS","$IEE3","$IEE","$ISM2","$ISM3","$ISM4");
+              Add-ADGroupMember -Identity $Group2 -Members @("$IEE2");
+              Add-ADGroupMember -Identity $Group3 -Members @("$IEE2");
+              Add-ADGroupMember -Identity $Group4 -Members @("$ISM");
+              Add-ADGroupMember -Identity $Group5 -Members @("$ISM");
+              Add-ADGroupMember -Identity $Group6 -Members @("$OW");
+              Add-ADGroupMember -Identity $Group7 -Members @("$OW");'
+
 #-----------------These 3 are password Resets-----------------------------------
 
-$PWReset = '$Code = "LLTPNP"
+$PWReset = '$Code = "LLTP"
             $Domain = $Code + "AMI"
 CD C:\
 #This is the file that will be generated with the users account ID and the password generated.
@@ -481,7 +689,7 @@ Write-Output "UserID:$name `t Password:$NewPassword" `n`n|FT -AutoSize >>SVCPass
 
 } '
 
-$PWReset2 = '$Code = "LLTPNP"
+$PWReset2 = '$Code = "LLTP"
             $Domain = $Code + "AMI"
 CD C:\
 #This is the file that will be generated with the users account ID and the password generated.
@@ -515,7 +723,7 @@ Write-Output "UserID:$name `t Password:$NewPassword" `n`n|FT -AutoSize >>ItronSV
 
 } '
 
-$PWReset3 = '$Code = "LLTPNP"
+$PWReset3 = '$Code = "LLTP"
             $Domain = $Code + "AMI"
 CD C:\
 #This is the file that will be generated with the users account ID and the password generated.
@@ -551,7 +759,7 @@ Write-Output "UserID:$name `t Password:$NewPassword" `n`n|FT -AutoSize >>ItronEm
 
 #-------------These Setup the GPO's----------------------------
 
-$GPO = '$Code = "LLTPNP"
+$GPO = '$Code = "LLTP"
         $Domain = $Code + "AMI"
         New-GPO -name "2012 SMB1 Disable"
         New-GPO -name "Admin Hidden Files"
@@ -572,7 +780,7 @@ $GPO = '$Code = "LLTPNP"
         Import-gpo -BackupId EF583E60-DFA0-45C5-88DD-B8418464642E -Path C:\GPOBackup\ -TargetName "Security Policy - Domain"
         Import-gpo -BackupId B81A062B-4744-4BED-AEC1-931B5E38AC88 -Path C:\GPOBackup\ -TargetName "UAC Disable"'
 
-$GPOLink  = '$Code = "LLTPNP";
+$GPOLink  = '$Code = "LLTP";
              $Domain = $Code + "AMI";
              New-GPLink -Name "2012 SMB1 Disable" -Target "DC=$Domain,DC=Local"; 
              New-GPLink -Name "Admin Hidden Files" -Target "DC=$Domain,DC=Local";
@@ -583,10 +791,76 @@ $GPOLink  = '$Code = "LLTPNP";
              New-GPLink -Name "RDP End Disconnected Sessions" -Target "DC=$Domain,DC=Local";
              New-GPLink -Name "Security Policy - Domain" -Target "DC=$Domain,DC=Local"; 
              New-GPLink -Name "UAC Disable" -Target "DC=$Domain,DC=Local";'
-             
 
+ $IPV6 = 'netsh int ipv6 set int Ethernet0 routerdiscovery=disable
+netsh int ipv6 set int Ethernet0 managedaddress=disable
 
+Get-AdComputer -Filter {Enabled -eq $True -and OperatingSystem -like "*Windows*" -and Name -notlike "*-DC01"} | Foreach {
+    Invoke-Command -ComputerName $_.Name -ScriptBlock { 
+    "------------------------------------------------------------------------------"
+    Hostname
+    "------------------------------------------------------------------------------"
+    Get-NetAdapter -Name "Ethernet*" | Foreach {
+    $local:ifname = $_.Name
+    $local:ifindex = $_.ifIndex
+    $_ | Get-NetIPAddress | Foreach {
+        if ($_.AddressFamily -eq "IPv4") { $script:ipv4address = $_.IPAddress }
+        if (($_.AddressFamily -eq "IPv6") -And ($_.IPAddress -match "^fdfa:ffff:0:\d+:10:")) {
+            $script:ipv6address = $_.IPAddress
+        }
+    
+	    if (($_.AddressFamily -eq "IPv6") -And !($_.IPAddress -match "^fdfa:ffff:0:\d+:10:") -And !($_.IPAddress -match "^fe80")) {
+            "Found Dynamic IPv6:" + $_.IPAddress
+            "Applying Fix to turn off DHCPv6 and Stateless"
+            netsh int ipv6 set int $local:ifname routerdiscovery=disable
+            netsh int ipv6 set int $local:ifname managedaddress=disable
+            ipconfig /registerdns | Select-String "Regist" | Write-Host
+        }
+    }
+    if ($script:ipv6address) {
+        "Found manual ipv6 address, validating pairing with ipv4"
+        $script:ipv6address -match "^fdfa:ffff:0:(\d+):(\d+):(\d+):(\d+):(\d+)$" |Out-Null
+        $local:rmatch = $matches
+        $script:vlan = $local:rmatch[1]
+        if ((($vlan -match "^15\d{2}$") -And ($local:rmatch[3] -eq "150")) -Or (($vlan -match "^5\d{2}$") -And ($local:rmatch[3] -eq "50"))) {
+            $local:64con = $local:rmatch[2]+"."+$local:rmatch[3]+"."+$local:rmatch[4]+"."+$local:rmatch[5]
+            if ($script:ipv4address -eq $local:64con) {
+                "VALID IP Pair for VLAN $vlan $script:ipv4address / $script:ipv6address"
+                "    DNS addresses are: "+(Get-DNSClientServerAddress -InterfaceIndex $local:ifindex -AddressFamily ipv6).ServerAddresses
+            } else {
+                "!!INVALID IP Pair for VLAN $vlan $script:ipv4address / $script:ipv6address please correct it"
+            }
+        } Else {
+            "VLAN ID in IPv6 Address is invalid"
+        }
+    } else {
+        if ($script:ipv4address) {
+            if ($script:ipv4address.split(".")[1] -eq 50 -or 150 -or 250) {
+                $local:nvlan = (([Int]$script:ipv4address.split(".")[1])*10) + [Int]$script:ipv4address.split(".")[2]
+                $local:dnvlan = 500+[Int]$script:ipv4address.split(".")[2]
+                $local:v6pre = "fdfa:ffff:0:"+$local:nvlan+":"
+                $local:newv6 = $local:v6pre + [String]::Join(":",$script:ipv4address.split("."))
+                $local:newgw = $local:newv6.Substring(0, $local:newv6.lastIndexOf(":"))+":1"
+                $local:dns1 = "fdfa:ffff:0:"+$local:dnvlan+":10:50:"+[Int]$script:ipv4address.split(".")[2]+":11"
+                $local:dns2 = "fdfa:ffff:0:"+$local:dnvlan+":10:50:"+[Int]$script:ipv4address.split(".")[2]+":12"
+                "$local:ifname $script:ipv4address Did not find a v6 address configured, may I suggest $local:newv6 for interface: $local:ifindex gateway $local:newgw"
+                Enable-NetAdapterBinding -Name $local:ifname -ComponentID ms_tcpip6
+                New-NetIPAddress -InterfaceIndex $local:ifindex -IPAddress $local:newv6 -PrefixLength 64 -AddressFamily IPv6
+                Remove-NetRoute -DestinationPrefix ::/0 -ErrorAction SilentlyContinue
+                New-NetRoute -DestinationPrefix ::/0 -InterfaceIndex $local:ifindex -NextHop $local:newgw
+                "DNS Addresses will be: $local:dns1 and $local:dns2"
+                Set-DnsClientServerAddress -InterfaceIndex $local:ifindex -ServerAddresses $local:dns1, $local:dns2
+                netsh int ipv6 set int $local:ifname routerdiscovery=disable
+                netsh int ipv6 set int $local:ifname managedaddress=disable
+            } 
+        }
+    }
+}
 
+    }
+}
+Get-AdComputer -Filter{Enabled -eq $True -and OperatingSystem -like "*Windows*"} | Foreach { invoke-command -computername $_.Name -Scriptblock {hostname; ipconfig /flushdns}}
+dnscmd localhost /zoneprint CPUTAMI.LOCAL |Select-String fdfa:ffff:0'
 
 #########################################################################################################################################################################################
 
@@ -619,6 +893,7 @@ Start-VM -VM $DC02VMName
 Move-VM -VM $DomainControllerVMName -Destination $Folder
 
 Move-VM -VM $DC02VMName -Destination $Folder
+ 
 # ------This Section Targets and Executes the Scripts on the New Domain Controller Guest VM------
 
 # We first verify that the guest customization has finished on on the new DC VM by using the below loops to look for the relevant events within vCenter. 
@@ -671,6 +946,14 @@ Wait-Tools -VM $DomainControllerVMName -TimeoutSeconds 300
 # NOTE - Another short sleep here to make sure that other services have time to come up after VMware Tools are ready. 
 Start-Sleep -Seconds 30
 
+Get-VM $DomainControllorVMName|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $DomainControllorVMName|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $DomainControllorVMName|Set-Annotation -CustomAttribute "Deployment Template" -Value Win2016Std-DTEUCS
+
+Get-VM $DC02VMName|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $DC02VMName|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $DC02VMName|Set-Annotation -CustomAttribute "Deployment Template" -Value Win2016Std-DTEUCS
+
 # After Customization Verification is done we change the IP of the VM to the value defined near the top of the script
 
 if ($script:Cluster -eq 'P') {New-NetworkAdapter -VM $DomainControllerVMName -NetworkName vLAN-0$script:customernumber-$script:customer-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false}
@@ -680,7 +963,6 @@ elseif ($script:Cluster -eq 'NP') {New-NetworkAdapter -VM $DomainControllerVMNam
 if ($script:Cluster -eq 'P') {New-NetworkAdapter -VM $DC02VMName -NetworkName vLAN-0$script:customernumber-$script:customer-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false}
 
 elseif ($script:Cluster -eq 'NP') {New-NetworkAdapter -VM $DC02VMName -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false}
-
 
 Write-Verbose -Message "Getting ready to change IP Settings on VM $DomainControllerVMName." -Verbose
 
@@ -711,7 +993,7 @@ Write-Verbose -Message "Rebooting $DomainControllerVMName to Complete Forest Pro
 
 # Below sleep command is in place as the reboot needed from the above command doesn't always happen before the wait-tools command is run
 
-Start-Sleep -Seconds 360
+Start-Sleep -Seconds 460
 
 Wait-Tools -VM $DomainControllerVMName -TimeoutSeconds 300
 
@@ -826,27 +1108,43 @@ Invoke-VMScript -ScriptText $OU -VM $DomainControllerVMName -GuestUser $DomainUs
 
 Write-Verbose -Message "Setting up Groups on [$DomainControllerVMName]" -Verbos
 
-if ($script:Cluster -eq 'P'){Invoke-VMScript -ScriptText $Group1 -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+if ($Char -eq 'P'){Invoke-VMScript -ScriptText $Group1 -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
 
-Elseif ($script:Cluster -eq 'NP'){Invoke-VMScript -ScriptText $Group1Test -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+Elseif ($Char -eq 'T'){Invoke-VMScript -ScriptText $Group1Test -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+
+Elseif ($Char -eq 'D'){Invoke-VMScript -ScriptText $Group1Dev -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+
+Elseif ($Char -eq 'Q'){Invoke-VMScript -ScriptText $Group1QA -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
 
 Invoke-VMScript -ScriptText $Group2 -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord
 
-if ($script:Cluster -eq 'P'){Invoke-VMScript -ScriptText $Group3 -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+if ($Char -eq 'P'){Invoke-VMScript -ScriptText $Group3 -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
 
-Elseif ($script:Cluster -eq 'NP'){Invoke-VMScript -ScriptText $Group3Test -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+Elseif ($Char -eq 'T'){Invoke-VMScript -ScriptText $Group3Test -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+
+Elseif ($Char -eq 'D'){Invoke-VMScript -ScriptText $Group3Dev -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+
+Elseif ($Char -eq 'Q'){Invoke-VMScript -ScriptText $Group3QA -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
 
 Invoke-VMScript -ScriptText $Group4 -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord
 
 Write-Verbose -Message "Setting up Users on [$DomainControllerVMName]" -Verbos
 
-if ($script:Cluster -eq 'P'){Invoke-VMScript -ScriptText $Users -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+if ($Char -eq 'P'){Invoke-VMScript -ScriptText $Users -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
 
-elseif ($script:Cluster -eq 'NP'){Invoke-VMScript -ScriptText $UsersTest -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+elseif ($Char -eq 'T'){Invoke-VMScript -ScriptText $UsersTest -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
 
-if ($script:Cluster -eq 'P'){Invoke-VMScript -ScriptText $Users2 -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+elseif ($Char -eq 'D'){Invoke-VMScript -ScriptText $UsersDev -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
 
-elseif ($script:Cluster -eq 'NP'){Invoke-VMScript -ScriptText $Users2Test -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+elseif ($Char -eq 'Q'){Invoke-VMScript -ScriptText $UsersQA -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+
+if ($Char -eq 'P'){Invoke-VMScript -ScriptText $Users2 -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+
+elseif ($Char -eq 'T'){Invoke-VMScript -ScriptText $Users2Test -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+
+elseif ($Char -eq 'D'){Invoke-VMScript -ScriptText $Users2Dev -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+
+elseif ($Char -eq 'Q'){Invoke-VMScript -ScriptText $Users2QA -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
 
 Invoke-VMScript -ScriptText $Users3 -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord
 
@@ -860,9 +1158,13 @@ Write-Verbose -Message "Adding Users to Groups on [$DomainControllerVMName]" -Ve
 
 Invoke-VMScript -ScriptText $GroupAdd1 -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord
 
-if ($script:Cluster -eq 'P'){Invoke-VMScript -ScriptText $GroupAdd2 -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+if ($Char -eq 'P'){Invoke-VMScript -ScriptText $GroupAdd2 -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
 
-elseif ($script:Cluster -eq 'NP'){Invoke-VMScript -ScriptText $GroupAddTest2 -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+elseif ($Char -eq 'T'){Invoke-VMScript -ScriptText $GroupAddTest2 -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+
+elseif ($Char -eq 'D'){Invoke-VMScript -ScriptText $GroupAddDev2 -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
+
+elseif ($Char -eq 'Q'){Invoke-VMScript -ScriptText $GroupAddQA2 -VM $DomainControllerVMName -GuestUser $DomainUser -GuestPassword $DomainPWord}
 
 Write-Verbose -Message "Resetting Service Account Passwords on [$DomainControllerVMName] The file location is C:\SVCPasswords" -Verbos
 
@@ -896,6 +1198,611 @@ Restart-VM -VM $DC02VMName -Confirm:$false
 
 start-sleep 60
 
-Write-Verbose -Message "Environment Setup Complete" -Verbose
+Write-Verbose -Message "Environment Setup for DC's Complete" -Verbose
+
+Write-Verbose -Message "Deploying VM's for New Domain" -Verbose
+
+Write-Verbose -Message "Deploying ECC-CA Server" -Verbose
+
+New-VM -Name $script:customer-$Char-ECC-CA -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-ECC-CA|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-ECC-CA -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-ECC-CA 
+Get-OSCustomizationSpec -Name $script:customer-$Char-ECC-CA|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-ECC-CA |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.14 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-ECC-CA |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-ECC-CA|Set-VM -MemoryGB 8 -NumCpu 2 -OSCustomizationSpec $script:customer-$Char-ECC-CA -Confirm:$false
+Get-VM $script:customer-$Char-ECC-CA|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-ECC-CA|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-ECC-CA|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-ECC-CA|Set-Annotation -CustomAttribute "Deployment Template" -Value Win2012R2Std-GUIUCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-ECC-CA).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-ECC-CA' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-ECC-CA
+wait-tools -VM $script:customer-$Char-ECC-CA
+remove-oscustomizationspec $script:customer-$Char-ECC-CA -confirm:$false
+
+Write-Verbose -Message "Deploying RSA-CA Server" -Verbose
+
+New-VM -Name $script:customer-$Char-RSA-CA -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-RSA-CA|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-RSA-CA -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-RSA-CA
+Get-OSCustomizationSpec -Name $script:customer-$Char-RSA-CA|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-RSA-CA |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.19 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-RSA-CA |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-RSA-CA|Set-VM -MemoryGB 8 -NumCpu 2 -OSCustomizationSpec $script:customer-$Char-RSA-CA -Confirm:$false
+Get-VM $script:customer-$Char-RSA-CA|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-RSA-CA|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-RSA-CA|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-RSA-CA|Set-Annotation -CustomAttribute "Deployment Template" -Value Win2012R2Std-GUIUCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-RSA-CA).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-RSA-CA' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-RSA-CA
+wait-tools -VM $script:customer-$Char-RSA-CA
+remove-oscustomizationspec $script:customer-$Char-RSA-CA -confirm:$false
+
+Write-Verbose -Message "Deploying NPS Server" -Verbose
+
+New-VM -Name $script:customer-$Char-NPS -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-NPS|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-NPS -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-NPS
+Get-OSCustomizationSpec -Name $script:customer-$Char-NPS|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-NPS |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.16 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-NPS |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-NPS|Set-VM -MemoryGB 8 -NumCpu 2 -OSCustomizationSpec $script:customer-$Char-NPS -Confirm:$false
+Get-VM $script:customer-$Char-NPS|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-NPS|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-NPS|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-NPS|Set-Annotation -CustomAttribute "Deployment Template" -Value Win2012R2Std-GUIUCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-NPS).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-NPS' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-NPS
+wait-tools -VM $script:customer-$Char-NPS
+remove-oscustomizationspec $script:customer-$Char-NPS -confirm:$false
+
+Write-Verbose -Message "Deploying WIFI-CA Server" -Verbose
+
+New-VM -Name $script:customer-$Char-WIFI-CA -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-WIFI-CA|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-WIFI-CA -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-WIFI-CA
+Get-OSCustomizationSpec -Name $script:customer-$Char-WIFI-CA|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-WIFI-CA |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.20 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-WIFI-CA |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-WIFI-CA|Set-VM -MemoryGB 8 -NumCpu 2 -OSCustomizationSpec $script:customer-$Char-WIFI-CA -Confirm:$false
+Get-VM $script:customer-$Char-WIFI-CA|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-WIFI-CA|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-WIFI-CA|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-WIFI-CA|Set-Annotation -CustomAttribute "Deployment Template" -Value Win2012R2Std-GUIUCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-WIFI-CA).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-WIFI-CA' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-WIFI-CA
+wait-tools -VM $script:customer-$Char-WIFI-CA
+remove-oscustomizationspec $script:customer-$Char-WIFI-CA -confirm:$false
+
+Write-Verbose -Message "Deploying RDS01 Server" -Verbose
+
+New-VM -Name $script:customer-$Char-RDS01 -Template Win2016Std-DTEUCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-RDS01|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-RDS01 -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name Win2016Std-DTE-Baseline|New-OSCustomizationSpec -Name $script:customer-$Char-RDS01
+Get-OSCustomizationSpec -Name $script:customer-$Char-RDS01|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-RDS01 |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.26 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-RDS01 |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-RDS01|Set-VM -MemoryGB 16 -NumCpu 4 -OSCustomizationSpec $script:customer-$Char-RDS01 -Confirm:$false
+Get-VM $script:customer-$Char-RDS01|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-RDS01|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-RDS01|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-RDS01|Set-Annotation -CustomAttribute "Deployment Template" -Value Win2016Std-DTEUCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-RDS01).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-RDS01' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-RDS01
+wait-tools -VM $script:customer-$Char-RDS01
+remove-oscustomizationspec $script:customer-$Char-RDS01 -confirm:$false
+
+
+Write-Verbose -Message "Deploying OW-CM Server" -Verbose
+
+New-VM -Name $script:customer-$Char-OW-CM -Template OWOC-41-APP-UCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-OW-CM|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-OW-CM -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-OW-CM
+Get-OSCustomizationSpec -Name $script:customer-$Char-OW-CM|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-OW-CM |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.31 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-OW-CM |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-OW-CM|Set-VM -MemoryGB 8 -NumCpu 4 -OSCustomizationSpec $script:customer-$Char-OW-CM -Confirm:$false
+Get-VM $script:customer-$Char-OW-CM|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-OW-CM|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-OW-CM|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-OW-CM|Set-Annotation -CustomAttribute "Deployment Template" -Value OWOC-41-APP-UCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-OW-CM).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-OW-CM' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-OW-CM
+wait-tools -VM $script:customer-$Char-OW-CM
+remove-oscustomizationspec $script:customer-$Char-OW-CM -confirm:$false
+
+Write-Verbose -Message "Deploying SQL-DB2 Server" -Verbose
+
+New-VM -Name $script:customer-$Char-SQL-DB2 -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-SQL-DB2|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-SQL-DB2 -NetworkName vLAN-1$script:customernumber-$NP-DB -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-SQL-DB2
+Get-OSCustomizationSpec -Name $script:customer-$Char-SQL-DB2|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-SQL-DB2 |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.150.$UIP.32 -SubnetMask 255.255.255.0 -DefaultGateway 10.150.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-SQL-DB2 |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-SQL-DB2|Set-VM -MemoryGB 32 -NumCpu 16 -OSCustomizationSpec $script:customer-$Char-SQL-DB2 -Confirm:$false
+Get-VM $script:customer-$Char-SQL-DB2|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-SQL-DB2|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-SQL-DB2|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-SQL-DB2|Set-Annotation -CustomAttribute "Deployment Template" -Value Win2012R2Std-GUIUCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-SQL-DB2).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-SQL-DB2' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-SQL-DB2
+wait-tools -VM $script:customer-$Char-SQL-DB2
+remove-oscustomizationspec $script:customer-$Char-SQL-DB2 -confirm:$false
+
+Write-Verbose -Message "Deploying ISM-APP Server" -Verbose
+
+New-VM -Name $script:customer-$Char-ISM-APP -Template ISM-34-APP-UCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-ISM-APP|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-ISM-APP -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-ISM-APP
+Get-OSCustomizationSpec -Name $script:customer-$Char-ISM-APP|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-ISM-APP |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.32 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-ISM-APP |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-ISM-APP|Set-VM -MemoryGB 8 -NumCpu 2 -OSCustomizationSpec $script:customer-$Char-ISM-APP -Confirm:$false
+Get-VM $script:customer-$Char-ISM-APP|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-ISM-APP|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-ISM-APP|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-ISM-APP|Set-Annotation -CustomAttribute "Deployment Template" -Value ISM-34-APP-UCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-ISM-APP).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-ISM-APP' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-ISM-APP
+wait-tools -VM $script:customer-$Char-ISM-APP
+remove-oscustomizationspec $script:customer-$Char-ISM-APP -confirm:$false
+
+Write-Verbose -Message "Deploying SQL-DB1 Server" -Verbose
+
+New-VM -Name $script:customer-$Char-SQL-DB1 -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-SQL-DB1|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-SQL-DB1 -NetworkName vLAN-1$script:customernumber-$NP-DB -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-SQL-DB1
+Get-OSCustomizationSpec -Name $script:customer-$Char-SQL-DB1|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-SQL-DB1 |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.150.$UIP.31 -SubnetMask 255.255.255.0 -DefaultGateway 10.150.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-SQL-DB1 |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-SQL-DB1|Set-VM -MemoryGB 32 -NumCpu 16 -OSCustomizationSpec $script:customer-$Char-SQL-DB1 -Confirm:$false
+Get-VM $script:customer-$Char-SQL-DB1|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-SQL-DB1|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-SQL-DB1|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-SQL-DB1|Set-Annotation -CustomAttribute "Deployment Template" -Value Win2012R2Std-GUIUCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-SQL-DB1).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-SQL-DB1' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-SQL-DB1
+wait-tools -VM $script:customer-$Char-SQL-DB1
+remove-oscustomizationspec $script:customer-$Char-SQL-DB1 -confirm:$false
+
+Write-Verbose -Message "Deploying FND-APP Server" -Verbose
+
+New-VM -Name $script:customer-$Char-FND-APP -Template RHEL7.3-Full-UCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-FND-APP|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-FND-APP -NetworkName vLAN-2$script:customernumber-$NP-DMZ -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name RHEL7.3-Full|New-OSCustomizationSpec -Name $script:customer-$Char-FND-APP
+Get-OSCustomizationSpec -Name $script:customer-$Char-FND-APP|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-FND-APP |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.33 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-FND-APP |Set-OSCUstomizationSpec -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-FND-APP|Set-VM -MemoryGB 8 -NumCpu 4 -OSCustomizationSpec $script:customer-$Char-FND-APP -Confirm:$false
+Get-VM $script:customer-$Char-FND-APP|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-FND-APP|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-FND-APP|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-FND-APP|Set-Annotation -CustomAttribute "Deployment Template" -Value RHEL7.3-Full-UCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-FND-APP).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-FND-APP' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-FND-APP
+wait-tools -VM $script:customer-$Char-FND-APP
+remove-oscustomizationspec $script:customer-$Char-FND-APP -confirm:$false
+
+
+Write-Verbose -Message "Deploying FND-DB Server" -Verbose
+
+New-VM -Name $script:customer-$Char-FND-DB -Template RHEL-7.3-Full-GUI-Oracle12c-UCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-FND-DB|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-FND-DB -NetworkName vLAN-1$script:customernumber-$NP-DB -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name RHEL7.3-Full|New-OSCustomizationSpec -Name $script:customer-$Char-FND-DB
+Get-OSCustomizationSpec -Name $script:customer-$Char-FND-DB|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-FND-DB |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.150.$UIP.33 -SubnetMask 255.255.255.0 -DefaultGateway 10.150.$UIP.1  -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-FND-DB |Set-OSCUstomizationSpec -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-FND-DB|Set-VM -MemoryGB 8 -NumCpu 4 -OSCustomizationSpec $script:customer-$Char-FND-DB -Confirm:$false
+Get-VM $script:customer-$Char-FND-DB|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-FND-DB|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-FND-DB|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-FND-DB|Set-Annotation -CustomAttribute "Deployment Template" -Value RHEL-7.3-Full-GUI-Oracle12c-UCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-FND-DB).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-FND-DB' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-FND-DB
+wait-tools -VM $script:customer-$Char-FND-DB
+remove-oscustomizationspec $script:customer-$Char-FND-DB -confirm:$false
+
+Write-Verbose -Message "Deploying TPS Server" -Verbose
+
+New-VM -Name $script:customer-$Char-TPS -Template RHEL7.3-Full-UCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-TPS|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-TPS -NetworkName vLAN-2$script:customernumber-$NP-DMZ -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name RHEL7.3-Full|New-OSCustomizationSpec -Name $script:customer-$Char-TPS
+Get-OSCustomizationSpec -Name $script:customer-$Char-TPS|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-TPS |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.250.$UIP.17 -SubnetMask 255.255.255.0 -DefaultGateway 10.250.$UIP.1 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-TPS |Set-OSCUstomizationSpec -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-TPS|Set-VM -MemoryGB 8 -NumCpu 4 -OSCustomizationSpec $script:customer-$Char-TPS -Confirm:$false
+Get-VM $script:customer-$Char-TPS|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-TPS|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-TPS|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-TPS|Set-Annotation -CustomAttribute "Deployment Template" -Value RHEL7.3-Full-UCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-TPS).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-TPS' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-TPS
+wait-tools -VM $script:customer-$Char-TPS
+remove-oscustomizationspec $script:customer-$Char-TPS -confirm:$false
+
+if ($FCS -eq 'Yes') {
+
+Write-Verbose -Message "Deploying FCS-APP Server" -Verbose
+
+New-VM -Name $script:customer-$Char-FCS-APP -Template FCS-APP-UCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-FCS-APP|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-FCS-APP -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-FCS-APP
+Get-OSCustomizationSpec -Name $script:customer-$Char-FCS-APP|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-FCS-APP |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.36 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-FCS-APP |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-FCS-APP|Set-VM -MemoryGB 8 -NumCpu 2 -OSCustomizationSpec $script:customer-$Char-FCS-APP -Confirm:$false
+Get-VM $script:customer-$Char-FCS-APP|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-FCS-APP|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-FCS-APP|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-FCS-APP|Set-Annotation -CustomAttribute "Deployment Template" -Value FCS-APP-UCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-FCS-APP).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-FCS-APP' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-FCS-APP
+wait-tools -VM $script:customer-$Char-FCS-APP
+remove-oscustomizationspec $script:customer-$Char-FCS-APP -confirm:$false
+}
+
+if ($IEE -eq 'Yes') {
+Write-Verbose -Message "Deploying IEE-APP Server" -Verbose
+
+New-VM -Name $script:customer-$Char-IEE-APP -Template IEE-82-APP-UCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-IEE-APP|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-IEE-APP -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-IEE-APP
+Get-OSCustomizationSpec -Name $script:customer-$Char-IEE-APP|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-IEE-APP |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.34 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-IEE-APP |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-IEE-APP|Set-VM -MemoryGB 8 -NumCpu 2 -OSCustomizationSpec $script:customer-$Char-IEE-APP -Confirm:$false
+Get-VM $script:customer-$Char-IEE-APP|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-IEE-APP|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-IEE-APP|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-IEE-APP|Set-Annotation -CustomAttribute "Deployment Template" -Value IEE-82-APP-UCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-IEE-APP).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-IEE-APP' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-IEE-APP
+wait-tools -VM $script:customer-$Char-IEE-APP
+remove-oscustomizationspec $script:customer-$Char-IEE-APP -confirm:$false
+
+Write-Verbose -Message "Deploying IEE-DB Server" -Verbose
+
+New-VM -Name $script:customer-$Char-IEE-DB -Template IEE-82-DB-UCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-IEE-DB|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-IEE-DB -NetworkName vLAN-1$script:customernumber-$NP-DB -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-IEE-DB
+Get-OSCustomizationSpec -Name $script:customer-$Char-IEE-DB|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-IEE-DB |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.150.$UIP.34 -SubnetMask 255.255.255.0 -DefaultGateway 10.150.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-IEE-DB |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-IEE-DB|Set-VM -MemoryGB 8 -NumCpu 4 -OSCustomizationSpec $script:customer-$Char-IEE-DB -Confirm:$false
+Get-VM $script:customer-$Char-IEE-DB|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-IEE-DB|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-IEE-DB|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-IEE-DB|Set-Annotation -CustomAttribute "Deployment Template" -Value IEE-82-DB-UCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-IEE-DB).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-IEE-DB' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-IEE-DB
+wait-tools -VM $script:customer-$Char-IEE-DB
+remove-oscustomizationspec $script:customer-$Char-IEE-DB -confirm:$false
+}
+
+if($PM -eq 'Yes'){
+Write-Verbose -Message "Deploying PM-AGT Server" -Verbose
+
+New-VM -Name $script:customer-$Char-PM-AGT -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-PM-AGT|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-PM-AGT -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-PM-AGT 
+Get-OSCustomizationSpec -Name $script:customer-$Char-PM-AGT|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-PM-AGT |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.45 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-PM-AGT |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-PM-AGT|Set-VM -MemoryGB 8 -NumCpu 4 -OSCustomizationSpec $script:customer-$Char-PM-AGT -Confirm:$false
+Get-VM $script:customer-$Char-PM-AGT|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-PM-AGT|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-PM-AGT|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-PM-AGT|Set-Annotation -CustomAttribute "Deployment Template" -Value Win2012R2Std-GUIUCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-PM-AGT).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-PM-AGT' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-PM-AGT
+wait-tools -VM $script:customer-$Char-PM-AGT
+remove-oscustomizationspec $script:customer-$Char-PM-AGT -confirm:$false
+
+Write-Verbose -Message "Deploying PM-HUB Server" -Verbose
+
+New-VM -Name $script:customer-$Char-PM-HUB -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-PM-HUB|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-PM-HUB -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-PM-HUB 
+Get-OSCustomizationSpec -Name $script:customer-$Char-PM-HUB|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-PM-HUB |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.46 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-PM-HUB |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-PM-HUB|Set-VM -MemoryGB 8 -NumCpu 8 -OSCustomizationSpec $script:customer-$Char-PM-HUB -Confirm:$false
+Get-VM $script:customer-$Char-PM-HUB|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-PM-HUB|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-PM-HUB|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-PM-HUB|Set-Annotation -CustomAttribute "Deployment Template" -Value Win2012R2Std-GUIUCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-PM-HUB).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-PM-HUB' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-PM-HUB
+wait-tools -VM $script:customer-$Char-PM-HUB
+remove-oscustomizationspec $script:customer-$Char-PM-HUB -confirm:$false
+
+Write-Verbose -Message "Deploying PM-ID Server" -Verbose
+
+New-VM -Name $script:customer-$Char-PM-ID -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-PM-ID|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-PM-ID -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-PM-ID 
+Get-OSCustomizationSpec -Name $script:customer-$Char-PM-ID|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-PM-ID |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.47 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-PM-ID |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-PM-ID|Set-VM -MemoryGB 8 -NumCpu 4 -OSCustomizationSpec $script:customer-$Char-PM-ID -Confirm:$false
+Get-VM $script:customer-$Char-PM-ID|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-PM-ID|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-PM-ID|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-PM-ID|Set-Annotation -CustomAttribute "Deployment Template" -Value Win2012R2Std-GUIUCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-PM-ID).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-PM-ID' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-PM-ID
+wait-tools -VM $script:customer-$Char-PM-ID
+remove-oscustomizationspec $script:customer-$Char-PM-ID -confirm:$false
+
+Write-Verbose -Message "Deploying PM-MQ Server" -Verbose
+
+New-VM -Name $script:customer-$Char-PM-MQ -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-PM-MQ|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-PM-MQ -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-PM-MQ 
+Get-OSCustomizationSpec -Name $script:customer-$Char-PM-MQ|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-PM-MQ |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.48 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-PM-MQ |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-PM-MQ|Set-VM -MemoryGB 8 -NumCpu 4 -OSCustomizationSpec $script:customer-$Char-PM-MQ -Confirm:$false
+Get-VM $script:customer-$Char-PM-MQ|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-PM-MQ|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-PM-MQ|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-PM-MQ|Set-Annotation -CustomAttribute "Deployment Template" -Value Win2012R2Std-GUIUCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-PM-MQ).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-PM-MQ' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-PM-MQ
+wait-tools -VM $script:customer-$Char-PM-MQ
+remove-oscustomizationspec $script:customer-$Char-PM-MQ -confirm:$false
+
+Write-Verbose -Message "Deploying PM-APP Server" -Verbose
+
+New-VM -Name $script:customer-$Char-PM-APP -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-PM-APP|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-PM-APP -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-PM-APP 
+Get-OSCustomizationSpec -Name $script:customer-$Char-PM-APP|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-PM-APP |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.44 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-PM-APP |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-PM-APP|Set-VM -MemoryGB 16 -NumCpu 4 -OSCustomizationSpec $script:customer-$Char-PM-APP -Confirm:$false
+Get-VM $script:customer-$Char-PM-APP|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-PM-APP|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-PM-APP|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-PM-APP|Set-Annotation -CustomAttribute "Deployment Template" -Value Win2012R2Std-GUIUCS
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-PM-APP).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-PM-APP' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-PM-APP
+wait-tools -VM $script:customer-$Char-PM-APP
+remove-oscustomizationspec $script:customer-$Char-PM-APP -confirm:$false
+
+Write-Verbose -Message "Deploying PM-DB Server" -Verbose
+
+New-VM -Name $script:customer-$Char-PM-DB -Template PM-SQL-NEW -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-PM-DB|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-PM-DB -NetworkName vLAN-1$script:customernumber-$NP-DB -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-PM-DB 
+Get-OSCustomizationSpec -Name $script:customer-$Char-PM-DB|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-PM-DB |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.150.$UIP.44 -SubnetMask 255.255.255.0 -DefaultGateway 10.150.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-PM-DB |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-PM-DB|Set-VM -MemoryGB 24 -NumCpu 8 -OSCustomizationSpec $script:customer-$Char-PM-DB -Confirm:$false
+Get-VM $script:customer-$Char-PM-DB|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-PM-DB|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-PM-DB|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-PM-DB|Set-Annotation -CustomAttribute "Deployment Template" -Value PM-SQL-NEW
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-PM-DB).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-PM-DB' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-PM-DB
+wait-tools -VM $script:customer-$Char-PM-DB
+remove-oscustomizationspec $script:customer-$Char-PM-DB -confirm:$false
+}
+
+Write-Verbose -Message " All servers have been built doing post build clean up" -Verbose
+
+Write-Verbose -Message "Setting IPV6 Address" -Verbose
+
+Invoke-VMScript -ScriptText $IPV6 -VM $DomainControllerVMName -GuestUser $DomainUser2 -GuestPassword $DomainPWord2
 
 # End of Script

@@ -1,5 +1,5 @@
-﻿#Script Version 1.1
-$Ver = "v1.1"
+﻿#Script Version 1.3
+$Ver = "v1.3"
 
 # ------vCenter Targeting Varibles and Connection Commands Below------
 # This section insures that the PowerCLI PowerShell Modules are currently active. The pipe to Out-Null can be removed if you desire additional
@@ -44,10 +44,12 @@ if ($script:Cluster -eq 'NP') {$TargetCluster = Get-Cluster -Name "ItronMS-TP-LL
 
 $UIP = ($script:customernumber - 500)
 
-$Dom = $script:customer + "AMI.local"
-
 if ($script:Cluster -eq 'P') {$NP = $script:customer}
 elseif ($script:Cluster -eq 'NP') {$NP = $script:customer + "NP"}
+
+$FQDN = $NP + "AMI"
+
+$Dom = $NP + "AMI.local"
 
 #Create and setup VDS Groups for the customer
 
@@ -95,19 +97,25 @@ New-Folder -Name $Folder -Location Customers
 # Domain Controller VM IPs Below
 # NOTE: Insert IP info in $IP Variable
  
-$DCNetworkSettings = ' $IP = "93";
-                       netsh interface ip set address "Ethernet0" static 10.50.$IP.11 255.255.255.0 10.50.$IP.1'
+$DCNetworkSettings1 = @'
+netsh interface ip set address "Ethernet0" static 10.50.$IP.11 255.255.255.0 10.50.$IP.1
+'@
+$DCNetworkSettings = $DCNetworkSettings1.Replace('$IP',$UIP)
 
 
 # DC02 VM IPs Below in $IP Variable
 
-$DC02NetworkSettings = '$IP = "93";
-                        netsh interface ip set address "Ethernet0" static 10.50.$IP.12 255.255.255.0 10.50.$IP.1'
+$DC02NetworkSettings1 = @'
+netsh interface ip set address "Ethernet0" static 10.50.$IP.12 255.255.255.0 10.50.$IP.1
+'@
+$DC02NetworkSettings = $DC02NetworkSettings1.Replace('$IP',$UIP)
 
 # NOTE: DNS Server IP Below in $IP Variable
 
-$DNSSettings = '$IP = "93";
-                    Set-DnsClientServerAddress -InterfaceAlias "Ethernet0" -ServerAddresses("10.50.$IP.11","10.50.$IP.12")'
+$DNSSettings1 = @'
+Set-DnsClientServerAddress -InterfaceAlias "Ethernet0" -ServerAddresses("10.50.$IP.11","10.50.$IP.12")
+'@
+$DNSSettings = $DNSSettings1.Replace('$IP',$UIP)
 
 
  
@@ -142,14 +150,18 @@ $DomainCredential2 = New-Object -TypeName System.Management.Automation.PSCredent
 
 # This Scriptblock is used to add new VMs to the newly created domain by first defining the domain creds on the machine and then using Add-Computer
 
-$JoinNewDomain = '$Code = "LLTP";
-                  $Domain = $Code + "AMI.local"
-                  $DomainUser = "$Domain\Administrator";
+$JoinNewDomain1 = @'
+
+                  $DomainUser = "$DomainName\Administrator";
                   $DomainPWord = ConvertTo-SecureString -String "cl0ckw!SE" -AsPlainText -Force;
                   $DomainCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $DomainUser, $DomainPWord;
-                  Add-Computer -DomainName $Domain -Credential $DomainCredential;
+                  Add-Computer -DomainName $DomainName  -Credential $DomainCredential;
                   Start-Sleep -Seconds 20;
-                  Shutdown /r /t 0'
+                  Shutdown /r /t 0
+'@
+
+$JoinNewDomain = $JoinNewDomain1.Replace('$DomainName',$Dom)
+
 
  
  
@@ -161,41 +173,49 @@ $InstallADTools = ' Add-windowsfeature rsat-adds -includeallsubfeature'
 
 # This Scriptblock will define settings for a new AD Forest and then provision it with said settings. 
 # NOTE - Make sure to define the DSRM Password below in the line below that defines the $DSRMPWord Variable!!!!
-$ConfigureNewDomain =  '$Code = "LLTP";
-                       $DomainName = $Code + "AMI.local"
+$ConfigureNewDomain1 =  @'
+
                        $DomainMode = "Win2012R2";
                        $ForestMode = "Win2012R2";
                        $DSRMPWord = ConvertTo-SecureString -String "p@ssw0rd" -AsPlainText -Force;
-                       Install-ADDSForest -ForestMode $ForestMode -DomainMode $DomainMode -DomainName $DomainName -InstallDns -SafeModeAdministratorPassword $DSRMPWord -Force'
+                       Install-ADDSForest -ForestMode $ForestMode -DomainMode $DomainMode -DomainName $DomainName -InstallDns -SafeModeAdministratorPassword $DSRMPWord -Force
+'@
+$ConfigureNewDomain = $ConfigureNewDomain1.Replace('$DomainName',$Dom)
+
 
 # ------This Section Contains the Scripts to be executed against DC02 VMs------
 
-$InstallDC02Role =    '$Code = "LLTP";
-                       $DomainName = $Code + "AMI.local"
+$InstallDC02Role1 =    @'
                        $DomainMode = "Win2012R2";
                        $ForestMode = "Win2012R2";
                        $DomainUser = "$DomainName\Administrator";
                        $DomainPWord = ConvertTo-SecureString -String "cl0ckw!SE" -AsPlainText -Force;
-                       $DomainCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $DomainUser, $DomainPWord;
+                       $DomainCredential = New-Object -TypeName Syst`em.Management.Automation.PSCredential -ArgumentList $DomainUser, $DomainPWord;
                        $DSRMPWord = ConvertTo-SecureString -String "p@ssw0rd" -AsPlainText -Force;
-                       Install-ADDSDomainController -DomainName $DomainName -Credential $DomainCredential -InstallDns -SafeModeAdministratorPassword $DSRMPWord -Force'
+                       Install-ADDSDomainController -DomainName $DomainName -Credential $DomainCredential -InstallDns -SafeModeAdministratorPassword $DSRMPWord -Force
+'@
+$InstallDC02Role = $InstallDC02Role1.Replace('$DomainName',$Dom)
 
-$InstallDNSZones = '$IP = "93";
+
+$InstallDNSZones1 = @'
                     Set-DnsServerForwarder -IPAddress ("10.51.100.101","10.51.100.102","fdfa:ffff:0:200:10:51:100:101","fdfa:ffff:0:200:10:51:100:102") 
                     Add-DnsServerPrimaryZone -NetworkID "10.50.$IP.0/24" -ReplicationScope Forest -DynamicUpdate NonsecureAndSecure;
                     Add-DnsServerPrimaryZone -NetworkID "10.150.$IP.0/24" -ReplicationScope Forest -DynamicUpdate NonsecureAndSecure;
                     Add-DnsServerPrimaryZone -NetworkID "10.250.$IP.0/24" -ReplicationScope Forest -DynamicUpdate NonsecureAndSecure;
                     Add-DnsServerPrimaryZone -NetworkID "fdfa:ffff:0:5$IP::/64" -ReplicationScope Forest -DynamicUpdate NonsecureAndSecure;
                     Add-DnsServerPrimaryZone -NetworkID "fdfa:ffff:0:15$IP::/64" -ReplicationScope Forest -DynamicUpdate NonsecureAndSecure;
-                    Add-DnsServerPrimaryZone -NetworkID "fdfa:ffff:0:25$IP::/64" -ReplicationScope Forest -DynamicUpdate NonsecureAndSecure'
+                    Add-DnsServerPrimaryZone -NetworkID "fdfa:ffff:0:25$IP::/64" -ReplicationScope Forest -DynamicUpdate NonsecureAndSecure
+'@
+
+$InstallDNSZones = $InstallDNSZones1.Replace('$IP',$UIP)
+
 
 $InstallDNSZones2 = 'Set-DnsServerForwarder -IPAddress ("10.51.100.101","10.51.100.102","fdfa:ffff:0:200:10:51:100:101","fdfa:ffff:0:200:10:51:100:102")'
 
 
 # ----------------This Section Contains the Scripts to Setup Groups and Users-----------
 
-$OU =  '$Code = "LLTP";
-        $Domain = $Code + "AMI"
+$OU1 =  @'
         New-ADOrganizationalUnit -Name Customers -Path "DC=$Domain,DC=local";
         New-ADOrganizationalUnit -Name Itron -Path "DC=$Domain,DC=local";
         New-ADOrganizationalUnit -Name Applications -Path "OU=Customers,DC=$Domain,DC=local";
@@ -206,18 +226,20 @@ $OU =  '$Code = "LLTP";
         New-ADOrganizationalUnit -Name Users -Path "OU=Customers,DC=$Domain,DC=local";
         New-ADOrganizationalUnit -Name Users -Path "OU=Itron,DC=$Domain,DC=local";
         New-ADOrganizationalUnit -Name Service_Accounts -Path "OU=Itron,DC=$Domain,DC=local";
-        New-ADOrganizationalUnit -Name Groups -Path "OU=Itron,DC=$Domain,DC=local";'
+        New-ADOrganizationalUnit -Name Groups -Path "OU=Itron,DC=$Domain,DC=local";
+'@
+$OU = $OU1.Replace('$Domain',$FQDN)
 
-$Group1 = '$Code = "LLTP";
-           $Domain = $Code + "AMI";
-           $IEE = $Code  + "_APP_P_IEE_Admin";
-           $IEE2 = $Code  + "_APP_P_IEE_User";
-           $IEE3 = $Code  + "_APP_P_IEECSR_User";
-           $ISM = $Code  + "_APP_P_ISM_Admin";
-           $ISM2 = $Code  + "_APP_P_ISM_User";
-           $FND = $Code + "_FND_Admin";
-           $FND1 = $Code + "_FND_Endpoint_Operator";
-           $FND2 = $Code + "_FND_Monitor_Only";
+
+$Group1A = @'
+           $IEE = "$Code"  + "_APP_P_IEE_Admin";
+           $IEE2 = "$Code"  + "_APP_P_IEE_User";
+           $IEE3 = "$Code"  + "_APP_P_IEECSR_User";
+           $ISM = "$Code"  + "_APP_P_ISM_Admin";
+           $ISM2 = "$Code"  + "_APP_P_ISM_User";
+           $FND = "$Code" + "_FND_Admin";
+           $FND1 = "$Code" + "_FND_Endpoint_Operator";
+           $FND2 = "$Code" + "_FND_Monitor_Only";
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND -SamAccountName $FND -DisplayName $FND -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $IEE -SamAccountName $IEE -DisplayName $IEE -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $IEE2 -SamAccountName $IEE2 -DisplayName $IEE2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
@@ -225,19 +247,19 @@ $Group1 = '$Code = "LLTP";
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $ISM -SamAccountName $ISM -DisplayName $ISM -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $ISM2 -SamAccountName $ISM2 -DisplayName $ISM2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND1 -SamAccountName $FND1 -DisplayName $FND -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
-           New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND2 -SamAccountName $FND2 -DisplayName $FND2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";'
+           New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND2 -SamAccountName $FND2 -DisplayName $FND2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+'@
+$Group1 = $Group1A.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
-
-$Group1Test = '$Code = "LLTP";
-               $Domain = $Code + "AMI";
-               $IEE = $Code  + "_APP_T_IEE_Admin";
-               $IEE2 = $Code  + "_APP_T_IEE_User";
-               $IEE3 = $Code  + "_APP_T_IEECSR_User";
-               $ISM = $Code  + "_APP_T_ISM_Admin";
-               $ISM2 = $Code  + "_APP_T_ISM_User";
-               $FND = $Code + "_FND_Admin";
-               $FND1 = $Code + "_FND_Endpoint_Operator";
-               $FND2 = $Code + "_FND_Monitor_Only";
+$Group1TestA = @'
+               $IEE = "$Code"  + "_APP_T_IEE_Admin";
+               $IEE2 = "$Code" + "_APP_T_IEE_User";
+               $IEE3 = "$Code"  + "_APP_T_IEECSR_User";
+               $ISM = "$Code"  + "_APP_T_ISM_Admin";
+               $ISM2 = "$Code"  + "_APP_T_ISM_User";
+               $FND = "$Code" + "_FND_Admin";
+               $FND1 = "$Code" + "_FND_Endpoint_Operator";
+               $FND2 = "$Code" + "_FND_Monitor_Only";
                $ErrorActionPreference = "SilentlyContinue"
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND -SamAccountName $FND -DisplayName $FND -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
                $ErrorActionPreference = "Continue"
@@ -247,18 +269,39 @@ $Group1Test = '$Code = "LLTP";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $ISM -SamAccountName $ISM -DisplayName $ISM -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $ISM2 -SamAccountName $ISM2 -DisplayName $ISM2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND1 -SamAccountName $FND1 -DisplayName $FND -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
-               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND2 -SamAccountName $FND2 -DisplayName $FND2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";'
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND2 -SamAccountName $FND2 -DisplayName $FND2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+'@
+$Group1Test = $Group1TestA.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
-$Group1Dev = '$Code = "LLTP";
-               $Domain = $Code + "AMI";
-               $IEE = $Code  + "_APP_D_IEE_Admin";
-               $IEE2 = $Code  + "_APP_D_IEE_User";
-               $IEE3 = $Code  + "_APP_D_IEECSR_User";
-               $ISM = $Code  + "_APP_D_ISM_Admin";
-               $ISM2 = $Code  + "_APP_D_ISM_User";
-               $FND = $Code + "_FND_Admin";
-               $FND1 = $Code + "_FND_Endpoint_Operator";
-               $FND2 = $Code + "_FND_Monitor_Only";
+$Group1DevA = @'
+               $IEE = "$Code"  + "_APP_D_IEE_Admin";
+               $IEE2 = "$Code"  + "_APP_D_IEE_User";
+               $IEE3 = "$Code" + "_APP_D_IEECSR_User";
+               $ISM = "$Code"  + "_APP_D_ISM_Admin";
+               $ISM2 = "$Code"  + "_APP_D_ISM_User";
+               $FND = "$Code" + "_FND_Admin";
+               $FND1 = "$Code" + "_FND_Endpoint_Operator";
+               $FND2 = "$Code" + "_FND_Monitor_Only";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND -SamAccountName $FND -DisplayName $FND -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $IEE -SamAccountName $IEE -DisplayName $IEE -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $IEE2 -SamAccountName $IEE2 -DisplayName $IEE2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $IEE3 -SamAccountName $IEE3 -DisplayName $IEE3 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $ISM -SamAccountName $ISM -DisplayName $ISM -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $ISM2 -SamAccountName $ISM2 -DisplayName $ISM2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND1 -SamAccountName $FND1 -DisplayName $FND -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND2 -SamAccountName $FND2 -DisplayName $FND2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+'@
+$Group1Dev = $Group1DevA.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
+
+$Group1QAA = @'
+               $IEE = "$Code"  + "_APP_QA_IEE_Admin";
+               $IEE2 = "$Code"  + "_APP_QA_IEE_User";
+               $IEE3 = "$Code"  + "_APP_QA_IEECSR_User";
+               $ISM = "$Code"  + "_APP_QA_ISM_Admin";
+               $ISM2 = "$Code"  + "_APP_QA_ISM_User";
+               $FND = "$Code" + "_FND_Admin";
+               $FND1 = "$Code" + "_FND_Endpoint_Operator";
+               $FND2 = "$Code" + "_FND_Monitor_Only";
                $ErrorActionPreference = "SilentlyContinue"
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND -SamAccountName $FND -DisplayName $FND -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
                $ErrorActionPreference = "Continue"
@@ -268,395 +311,414 @@ $Group1Dev = '$Code = "LLTP";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $ISM -SamAccountName $ISM -DisplayName $ISM -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $ISM2 -SamAccountName $ISM2 -DisplayName $ISM2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND1 -SamAccountName $FND1 -DisplayName $FND -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
-               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND2 -SamAccountName $FND2 -DisplayName $FND2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";'
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND2 -SamAccountName $FND2 -DisplayName $FND2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
+'@
 
-$Group1QA = '$Code = "LLTP";
-               $Domain = $Code + "AMI";
-               $IEE = $Code  + "_APP_QA_IEE_Admin";
-               $IEE2 = $Code  + "_APP_QA_IEE_User";
-               $IEE3 = $Code  + "_APP_QA_IEECSR_User";
-               $ISM = $Code  + "_APP_QA_ISM_Admin";
-               $ISM2 = $Code  + "_APP_QA_ISM_User";
-               $FND = $Code + "_FND_Admin";
-               $FND1 = $Code + "_FND_Endpoint_Operator";
-               $FND2 = $Code + "_FND_Monitor_Only";
-               $ErrorActionPreference = "SilentlyContinue"
-               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND -SamAccountName $FND -DisplayName $FND -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
-               $ErrorActionPreference = "Continue"
-               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $IEE -SamAccountName $IEE -DisplayName $IEE -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
-               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $IEE2 -SamAccountName $IEE2 -DisplayName $IEE2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
-               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $IEE3 -SamAccountName $IEE3 -DisplayName $IEE3 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
-               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $ISM -SamAccountName $ISM -DisplayName $ISM -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
-               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $ISM2 -SamAccountName $ISM2 -DisplayName $ISM2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
-               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND1 -SamAccountName $FND1 -DisplayName $FND -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
-               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND2 -SamAccountName $FND2 -DisplayName $FND2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";'
+$Group1QA = $Group1QAA.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
-$Group2 = '$Code = "LLTP"
-           $Domain = $Code + "AMI"
-           $FND = $Code + "_FND_NBAPI"
-           $FND2 = $Code + "_FND_Root"
-           $FND3 = $Code + "_FND_Router_Operator"
+$Group2A = @'
+           $FND = "$Code" + "_FND_NBAPI"
+           $FND2 = "$Code" + "_FND_Root"
+           $FND3 = "$Code" + "_FND_Router_Operator"
            $CGR = "CGR_GROUP"
-           $Meter =  $Code + "_Meters"
-           $SVC = $Code + "_ServiceAccount"
+           $Meter =  "$Code" + "_Meters"
+           $SVC = "$Code" + "_ServiceAccount"
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND -SamAccountName $FND -DisplayName $FND -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND3 -SamAccountName $FND3 -DisplayName $FND3 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $FND2 -SamAccountName $FND2 -DisplayName $FND2 -Path "OU=Applications,OU=Customers,DC=$Domain,DC=local";
            New-ADGroup -GroupScope 1 -GroupCategory Security -Name $CGR -SamAccountName $CGR -DisplayName $CGR -Path "OU=CGRs,OU=Customers,DC=$Domain,DC=local";
            New-ADGroup -GroupScope 1 -GroupCategory Security -Name $Meter -SamAccountName $Meter -DisplayName $Meter -Path "OU=Meters,OU=Customers,DC=$Domain,DC=local";
-           New-ADGroup -GroupScope 0 -GroupCategory Security -Name $SVC -SamAccountName $SVC -DisplayName $SVC -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local";'
+           New-ADGroup -GroupScope 0 -GroupCategory Security -Name $SVC -SamAccountName $SVC -DisplayName $SVC -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local";
+'@
 
-$Group3 = '$Code = "LLTP"
-           $Domain = $Code + "AMI"
-           $Admin = $Code + "_Admin"
-           $OW = $Code + "_APP_P_OWCEUI_Admin"
-           $OW2 = $Code + "_APP_P_OWCEUI_User"
-           $DBA = $Code + "_DBA"
-           $DBU =  $Code + "_DBU"
-           $TS = $Code + "_TS_User"
-           $User = $Code + "_Users"
+$Group2 = $Group2A.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
+
+$Group3A = @'
+           $Admin = "$Code" + "_Admin"
+           $OW = "$Code" + "_APP_P_OWCEUI_Admin"
+           $OW2 = "$Code" + "_APP_P_OWCEUI_User"
+           $DBA = "$Code" + "_DBA"
+           $DBU =  "$Code" + "_DBU"
+           $TS = "$Code" + "_TS_User"
+           $User = "$Code" + "_Users"
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $Admin -SamAccountName $Admin -DisplayName $Admin -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $OW -SamAccountName $OW -DisplayName $Admin -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $OW2 -SamAccountName $OW2 -DisplayName $OW2 -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $DBA -SamAccountName $DBA -DisplayName $DBA -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $DBU -SamAccountName $DBU -DisplayName $DBU -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $TS -SamAccountName $TS -DisplayName $TS -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
-           New-ADGroup -GroupScope 0 -GroupCategory Security -Name $User -SamAccountName $User -DisplayName $User -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";'
+           New-ADGroup -GroupScope 0 -GroupCategory Security -Name $User -SamAccountName $User -DisplayName $User -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
+'@
 
+$Group3 = $Group3A.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
-$Group3Test = '$Code = "LLTP"
-               $Domain = $Code + "AMI"
-               $Admin = $Code + "_Admin"
-               $OW = $Code + "_APP_T_OWCEUI_Admin"
-               $OW2 = $Code + "_APP_T_OWCEUI_User"
-               $DBA = $Code + "_DBA"
-               $DBU =  $Code + "_DBU"
-               $TS = $Code + "_TS_User"
-               $User = $Code + "_Users"
+$Group3TestA = @'
+               $Admin = "$Code" + "_Admin"
+               $OW = "$Code" + "_APP_T_OWCEUI_Admin"
+               $OW2 = "$Code" + "_APP_T_OWCEUI_User"
+               $DBA = "$Code" + "_DBA"
+               $DBU =  "$Code" + "_DBU"
+               $TS = "$Code" + "_TS_User"
+               $User = "$Code" + "_Users"
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $Admin -SamAccountName $Admin -DisplayName $Admin -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $OW -SamAccountName $OW -DisplayName $Admin -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $OW2 -SamAccountName $OW2 -DisplayName $OW2 -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $DBA -SamAccountName $DBA -DisplayName $DBA -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $DBU -SamAccountName $DBU -DisplayName $DBU -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $TS -SamAccountName $TS -DisplayName $TS -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
-               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $User -SamAccountName $User -DisplayName $User -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";'
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $User -SamAccountName $User -DisplayName $User -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
+'@
 
-$Group3Dev = '$Code = "LLTP"
-               $Domain = $Code + "AMI"
-               $Admin = $Code + "_Admin"
-               $OW = $Code + "_APP_D_OWCEUI_Admin"
+$Group3Test = $Group3TestA.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
+
+$Group3DevA = @'
+               $Admin = "$Code" + "_Admin"
+               $OW = "$Code" + "_APP_D_OWCEUI_Admin"
                $OW2 = $Code + "_APP_D_OWCEUI_User"
-               $DBA = $Code + "_DBA"
-               $DBU =  $Code + "_DBU"
-               $TS = $Code + "_TS_User"
-               $User = $Code + "_Users"
+               $DBA = "$Code" + "_DBA"
+               $DBU =  "$Code" + "_DBU"
+               $TS = "$Code" + "_TS_User"
+               $User = "$Code" + "_Users"
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $Admin -SamAccountName $Admin -DisplayName $Admin -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $OW -SamAccountName $OW -DisplayName $Admin -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $OW2 -SamAccountName $OW2 -DisplayName $OW2 -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $DBA -SamAccountName $DBA -DisplayName $DBA -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $DBU -SamAccountName $DBU -DisplayName $DBU -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $TS -SamAccountName $TS -DisplayName $TS -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
-               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $User -SamAccountName $User -DisplayName $User -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";'
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $User -SamAccountName $User -DisplayName $User -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
+'@
+$Group3Dev = $Group3DevA.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
-$Group3QA = '$Code = "LLTP"
-               $Domain = $Code + "AMI"
-               $Admin = $Code + "_Admin"
-               $OW = $Code + "_APP_QA_OWCEUI_Admin"
-               $OW2 = $Code + "_APP_QA_OWCEUI_User"
-               $DBA = $Code + "_DBA"
-               $DBU =  $Code + "_DBU"
-               $TS = $Code + "_TS_User"
-               $User = $Code + "_Users"
+$Group3QAA = @'
+               $Admin = "$Code" + "_Admin"
+               $OW = "$Code" + "_APP_QA_OWCEUI_Admin"
+               $OW2 = "$Code" + "_APP_QA_OWCEUI_User"
+               $DBA = "$Code" + "_DBA"
+               $DBU =  "$Code" + "_DBU"
+               $TS ="$Code" + "_TS_User"
+               $User = "$Code" + "_Users"
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $Admin -SamAccountName $Admin -DisplayName $Admin -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $OW -SamAccountName $OW -DisplayName $Admin -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $OW2 -SamAccountName $OW2 -DisplayName $OW2 -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $DBA -SamAccountName $DBA -DisplayName $DBA -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $DBU -SamAccountName $DBU -DisplayName $DBU -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
                New-ADGroup -GroupScope 0 -GroupCategory Security -Name $TS -SamAccountName $TS -DisplayName $TS -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
-               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $User -SamAccountName $User -DisplayName $User -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";'
+               New-ADGroup -GroupScope 0 -GroupCategory Security -Name $User -SamAccountName $User -DisplayName $User -Path "OU=Users,OU=Customers,DC=$Domain,DC=local";
+'@
+$Group3QA = $Group3QAA.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
 
-$Group4 = '$Code = "LLTP"
-           $Domain = $Code + "AMI"
+$Group4A = @'
            $Admin = "Itron Admins"
            $DBA = "Itron DBA"
            $Net = "Network_Admin"
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $Admin -SamAccountName $Admin -DisplayName $Admin -Path "OU=Groups,OU=Itron,DC=$Domain,DC=local";
            New-ADGroup -GroupScope 0 -GroupCategory Security -Name $DBA -SamAccountName $DBA -DisplayName $Admin -Path "OU=Groups,OU=Itron,DC=$Domain,DC=local";
-           New-ADGroup -GroupScope 0 -GroupCategory Security -Name $NET -SamAccountName $NET -DisplayName $NET -Path "OU=Groups,OU=Itron,DC=$Domain,DC=local";'
+           New-ADGroup -GroupScope 0 -GroupCategory Security -Name $NET -SamAccountName $NET -DisplayName $NET -Path "OU=Groups,OU=Itron,DC=$Domain,DC=local";
+'@
+
+$Group4 = $Group4A.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
 
-
-$Users =  '$Code = "LLTP";
-          $Domain = $Code + "AMI"
-          $CA = $Code + "PCASVC";
-          $IEE2 = $Code + "PIEEDA";
-          $IEE = $Code + "PIEEDB";  
-          $FCS = $Code + "PFVCSVC";
-          $IEE3 = $Code + "PIEESVC";
-          $ISM = $Code + "PISMAdmin";
-          $ISM2 = $Code + "PISMDB";
+$UsersA = @'
+          $CA = "$Code" + "PCASVC";
+          $IEE2 = "$Code" + "PIEEDA";
+          $IEE = "$Code" + "PIEEDB";  
+          $FCS = "$Code" + "PFVCSVC";
+          $IEE3 = "$Code" + "PIEESVC";
+          $ISM = "$Code" + "PISMAdmin";
+          $ISM2 = "$Code" + "PISMDB";
           New-ADUser -Name $CA -GivenName $CA -SamAccountName $CA -Surname "Service" -DisplayName $CA -UserPrincipalName "$CA@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
           New-ADUser -Name $IEE2 -GivenName $IEE2 -SamAccountName $IEE2 -Surname "Service" -DisplayName $IEE2 -UserPrincipalName "$IEE2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
           New-ADUser -Name $FCS -GivenName $FCS -SamAccountName $FCS -Surname "Service" -DisplayName $FCS -UserPrincipalName "$FCS@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
           New-ADUser -Name $IEE3 -GivenName $IEE3 -SamAccountName $IEE3 -Surname "Service" -DisplayName $IEE3 -UserPrincipalName "$IEE3@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
           New-ADUser -Name $ISM -GivenName $ISM -SamAccountName $ISM -Surname "Service" -DisplayName $ISM -UserPrincipalName "$ISM@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
-          New-ADUser -Name $ISM2 -GivenName $ISM2 -SamAccountName $ISM2 -Surname "Service" -DisplayName $ISM2 -UserPrincipalName "$ISM2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1'
+          New-ADUser -Name $ISM2 -GivenName $ISM2 -SamAccountName $ISM2 -Surname "Service" -DisplayName $ISM2 -UserPrincipalName "$ISM2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1
+'@
 
+$Users = $UsersA.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
-$UsersTest =  '$Code = "LLTP";
-               $Domain = $Code + "AMI"
-               $CA = $Code + "TCASVC";
-               $IEE2 = $Code + "TIEEDA";
-               $IEE = $Code + "TIEEDB";  
-               $FCS = $Code + "TFVCSVC";
-               $IEE3 = $Code + "TIEESVC";
-               $ISM = $Code + "TISMAdmin";
-               $ISM2 = $Code + "TISMDB";
+$UsersTestA =  @'
+               $CA = "$Code" + "TCASVC";
+               $IEE2 = "$Code" + "TIEEDA";
+               $IEE = "$Code" + "TIEEDB";  
+               $FCS = "$Code" + "TFVCSVC";
+               $IEE3 = "$Code" + "TIEESVC";
+               $ISM = "$Code" + "TISMAdmin";
+               $ISM2 = "$Code" + "TISMDB";
                New-ADUser -Name $CA -GivenName $CA -SamAccountName $CA -Surname "Service" -DisplayName $CA -UserPrincipalName "$CA@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
                New-ADUser -Name $IEE2 -GivenName $IEE2 -SamAccountName $IEE2 -Surname "Service" -DisplayName $IEE2 -UserPrincipalName "$IEE2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
                New-ADUser -Name $FCS -GivenName $FCS -SamAccountName $FCS -Surname "Service" -DisplayName $FCS -UserPrincipalName "$FCS@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
                New-ADUser -Name $IEE3 -GivenName $IEE3 -SamAccountName $IEE3 -Surname "Service" -DisplayName $IEE3 -UserPrincipalName "$IEE3@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
                New-ADUser -Name $ISM -GivenName $ISM -SamAccountName $ISM -Surname "Service" -DisplayName $ISM -UserPrincipalName "$ISM@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
-               New-ADUser -Name $ISM2 -GivenName $ISM2 -SamAccountName $ISM2 -Surname "Service" -DisplayName $ISM2 -UserPrincipalName "$ISM2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1'
+               New-ADUser -Name $ISM2 -GivenName $ISM2 -SamAccountName $ISM2 -Surname "Service" -DisplayName $ISM2 -UserPrincipalName "$ISM2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1
+'@
 
-$UsersDev =  '$Code = "LLTP";
-               $Domain = $Code + "AMI"
-               $CA = $Code + "DCASVC";
-               $IEE2 = $Code + "DIEEDA";
-               $IEE = $Code + "DIEEDB";  
-               $FCS = $Code + "DFVCSVC";
-               $IEE3 = $Code + "DIEESVC";
-               $ISM = $Code + "DISMAdmin";
-               $ISM2 = $Code + "DISMDB";
+$UsersTest = $UsersTestA.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
+
+$UsersDevA =  @'
+               $CA = "$Code" + "DCASVC";
+               $IEE2 = "$Code" + "DIEEDA";
+               $IEE = "$Code" + "DIEEDB";  
+               $FCS = "$Code" + "DFVCSVC";
+               $IEE3 = "$Code" + "DIEESVC";
+               $ISM = "$Code" + "DISMAdmin";
+               $ISM2 = "$Code" + "DISMDB";
                New-ADUser -Name $CA -GivenName $CA -SamAccountName $CA -Surname "Service" -DisplayName $CA -UserPrincipalName "$CA@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
                New-ADUser -Name $IEE2 -GivenName $IEE2 -SamAccountName $IEE2 -Surname "Service" -DisplayName $IEE2 -UserPrincipalName "$IEE2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
                New-ADUser -Name $FCS -GivenName $FCS -SamAccountName $FCS -Surname "Service" -DisplayName $FCS -UserPrincipalName "$FCS@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
                New-ADUser -Name $IEE3 -GivenName $IEE3 -SamAccountName $IEE3 -Surname "Service" -DisplayName $IEE3 -UserPrincipalName "$IEE3@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
                New-ADUser -Name $ISM -GivenName $ISM -SamAccountName $ISM -Surname "Service" -DisplayName $ISM -UserPrincipalName "$ISM@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
-               New-ADUser -Name $ISM2 -GivenName $ISM2 -SamAccountName $ISM2 -Surname "Service" -DisplayName $ISM2 -UserPrincipalName "$ISM2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1'
+               New-ADUser -Name $ISM2 -GivenName $ISM2 -SamAccountName $ISM2 -Surname "Service" -DisplayName $ISM2 -UserPrincipalName "$ISM2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1
+'@
 
-$UsersQA =  '$Code = "LLTP";
-               $Domain = $Code + "AMI"
-               $CA = $Code + "QACASVC";
-               $IEE2 = $Code + "QAIEEDA";
-               $IEE = $Code + "QAIEEDB";  
-               $FCS = $Code + "QAFVCSVC";
-               $IEE3 = $Code + "QAIEESVC";
-               $ISM = $Code + "QAISMAdmin";
-               $ISM2 = $Code + "QAISMDB";
+$UsersDev = $UsersDevA.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
+
+$UsersQAA =  @'
+               $CA = "$Code" + "QACASVC";
+               $IEE2 = "$Code" + "QAIEEDA";
+               $IEE = "$Code" + "QAIEEDB";  
+               $FCS = "$Code" + "QAFVCSVC";
+               $IEE3 = "$Code" + "QAIEESVC";
+               $ISM = "$Code" + "QAISMAdmin";
+               $ISM2 = "$Code" + "QAISMDB";
                New-ADUser -Name $CA -GivenName $CA -SamAccountName $CA -Surname "Service" -DisplayName $CA -UserPrincipalName "$CA@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
                New-ADUser -Name $IEE2 -GivenName $IEE2 -SamAccountName $IEE2 -Surname "Service" -DisplayName $IEE2 -UserPrincipalName "$IEE2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
                New-ADUser -Name $FCS -GivenName $FCS -SamAccountName $FCS -Surname "Service" -DisplayName $FCS -UserPrincipalName "$FCS@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
                New-ADUser -Name $IEE3 -GivenName $IEE3 -SamAccountName $IEE3 -Surname "Service" -DisplayName $IEE3 -UserPrincipalName "$IEE3@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
                New-ADUser -Name $ISM -GivenName $ISM -SamAccountName $ISM -Surname "Service" -DisplayName $ISM -UserPrincipalName "$ISM@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
-               New-ADUser -Name $ISM2 -GivenName $ISM2 -SamAccountName $ISM2 -Surname "Service" -DisplayName $ISM2 -UserPrincipalName "$ISM2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1'
+               New-ADUser -Name $ISM2 -GivenName $ISM2 -SamAccountName $ISM2 -Surname "Service" -DisplayName $ISM2 -UserPrincipalName "$ISM2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1
+'@
 
+$UsersQA = $UsersQAA.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
-$Users2 = '$Code = "LLTP"
-           $Domain = $Code + "AMI"
-           $ISM3 = $Code + "PISMEXTCon";
-           $ISM4 = $Code + "PISMSVC";
-           $OW = $Code + "POWAPP";
-           $IEE = $Code + "PIEEDB"; 
-           $OW2 = $Code + "POWDB";
+$Users2A = @'
+           $ISM3 = "$Code" + "PISMEXTCon";
+           $ISM4 = "$Code" + "PISMSVC";
+           $OW = "$Code" + "POWAPP";
+           $IEE = "$Code" + "PIEEDB"; 
+           $OW2 = "$Code" + "POWDB";
            New-ADUser -Name $ISM3 -GivenName $ISM3 -SamAccountName $ISM3 -Surname "Service" -DisplayName $ISM3 -UserPrincipalName "$ISM3@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1; 
            New-ADUser -Name $ISM4 -GivenName $ISM4 -SamAccountName $ISM4 -Surname "Service" -DisplayName $ISM4 -UserPrincipalName "$ISM4@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;                
            New-ADUser -Name $OW -GivenName $OW -SamAccountName $OW -Surname "Service" -DisplayName $OW -UserPrincipalName "$OW@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;        
            New-ADUser -Name $OW2 -GivenName $OW2 -SamAccountName $OW2 -Surname "Service" -DisplayName $OW2 -UserPrincipalName "$OW2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
-           New-ADUser -Name $IEE -GivenName $IEE -SamAccountName $IEE -Surname "Service" -DisplayName $IEE -UserPrincipalName "$IEE@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1'
+           New-ADUser -Name $IEE -GivenName $IEE -SamAccountName $IEE -Surname "Service" -DisplayName $IEE -UserPrincipalName "$IEE@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1
+'@
 
+$Users2 = $Users2A.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
-$Users2Test = '$Code = "LLTP"
-               $Domain = $Code + "AMI"
-               $ISM3 = $Code + "TISMEXTCon";
-               $ISM4 = $Code + "TISMSVC";
-               $OW = $Code + "TOWAPP";
-               $IEE = $Code + "TIEEDB"; 
-               $OW2 = $Code + "TOWDB";
+$Users2TestA = @'
+               $ISM3 = "$Code" + "TISMEXTCon";
+               $ISM4 = "$Code" + "TISMSVC";
+               $OW = "$Code" + "TOWAPP";
+               $IEE = "$Code" + "TIEEDB"; 
+               $OW2 = "$Code" + "TOWDB";
                New-ADUser -Name $ISM3 -GivenName $ISM3 -SamAccountName $ISM3 -Surname "Service" -DisplayName $ISM3 -UserPrincipalName "$ISM3@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1; 
                New-ADUser -Name $ISM4 -GivenName $ISM4 -SamAccountName $ISM4 -Surname "Service" -DisplayName $ISM4 -UserPrincipalName "$ISM4@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;                
                New-ADUser -Name $OW -GivenName $OW -SamAccountName $OW -Surname "Service" -DisplayName $OW -UserPrincipalName "$OW@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;        
                New-ADUser -Name $OW2 -GivenName $OW2 -SamAccountName $OW2 -Surname "Service" -DisplayName $OW2 -UserPrincipalName "$OW2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
-               New-ADUser -Name $IEE -GivenName $IEE -SamAccountName $IEE -Surname "Service" -DisplayName $IEE -UserPrincipalName "$IEE@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1'
+               New-ADUser -Name $IEE -GivenName $IEE -SamAccountName $IEE -Surname "Service" -DisplayName $IEE -UserPrincipalName "$IEE@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1
+'@
+$Users2Test = $Users2TestA.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
-$Users2Dev = '$Code = "LLTP"
-               $Domain = $Code + "AMI"
-               $ISM3 = $Code + "DISMEXTCon";
-               $ISM4 = $Code + "DISMSVC";
-               $OW = $Code + "DOWAPP";
-               $IEE = $Code + "DIEEDB"; 
-               $OW2 = $Code + "DOWDB";
+
+$Users2DevA = @'
+               $ISM3 = "$Code" + "DISMEXTCon";
+               $ISM4 = "$Code" + "DISMSVC";
+               $OW = "$Code" + "DOWAPP";
+               $IEE = "$Code" + "DIEEDB"; 
+               $OW2 = "$Code" + "DOWDB";
                New-ADUser -Name $ISM3 -GivenName $ISM3 -SamAccountName $ISM3 -Surname "Service" -DisplayName $ISM3 -UserPrincipalName "$ISM3@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1; 
                New-ADUser -Name $ISM4 -GivenName $ISM4 -SamAccountName $ISM4 -Surname "Service" -DisplayName $ISM4 -UserPrincipalName "$ISM4@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;                
                New-ADUser -Name $OW -GivenName $OW -SamAccountName $OW -Surname "Service" -DisplayName $OW -UserPrincipalName "$OW@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;        
                New-ADUser -Name $OW2 -GivenName $OW2 -SamAccountName $OW2 -Surname "Service" -DisplayName $OW2 -UserPrincipalName "$OW2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
-               New-ADUser -Name $IEE -GivenName $IEE -SamAccountName $IEE -Surname "Service" -DisplayName $IEE -UserPrincipalName "$IEE@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1'
+               New-ADUser -Name $IEE -GivenName $IEE -SamAccountName $IEE -Surname "Service" -DisplayName $IEE -UserPrincipalName "$IEE@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1
+'@
 
-$Users2Dev = '$Code = "LLTP"
-               $Domain = $Code + "AMI"
-               $ISM3 = $Code + "QAISMEXTCon";
-               $ISM4 = $Code + "QAISMSVC";
-               $OW = $Code + "QAOWAPP";
-               $IEE = $Code + "QAIEEDB"; 
-               $OW2 = $Code + "QAOWDB";
+$Users2Dev = $Users2DevA.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
+
+$Users2QAA = @'
+               $ISM3 = "$Code" + "QAISMEXTCon";
+               $ISM4 = "$Code" + "QAISMSVC";
+               $OW = "$Code" + "QAOWAPP";
+               $IEE = "$Code" + "QAIEEDB"; 
+               $OW2 = "$Code" + "QAOWDB";
                New-ADUser -Name $ISM3 -GivenName $ISM3 -SamAccountName $ISM3 -Surname "Service" -DisplayName $ISM3 -UserPrincipalName "$ISM3@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1; 
                New-ADUser -Name $ISM4 -GivenName $ISM4 -SamAccountName $ISM4 -Surname "Service" -DisplayName $ISM4 -UserPrincipalName "$ISM4@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;                
                New-ADUser -Name $OW -GivenName $OW -SamAccountName $OW -Surname "Service" -DisplayName $OW -UserPrincipalName "$OW@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;        
                New-ADUser -Name $OW2 -GivenName $OW2 -SamAccountName $OW2 -Surname "Service" -DisplayName $OW2 -UserPrincipalName "$OW2@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1;
-               New-ADUser -Name $IEE -GivenName $IEE -SamAccountName $IEE -Surname "Service" -DisplayName $IEE -UserPrincipalName "$IEE@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1'
+               New-ADUser -Name $IEE -GivenName $IEE -SamAccountName $IEE -Surname "Service" -DisplayName $IEE -UserPrincipalName "$IEE@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local" -Enabled 1
+'@
 
+$Users2QA = $Users2QAA.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
-$Users3 =  '$Code = "LLTP";
-            $Domain = $Code + "AMI";
+$Users3A =  @'
             New-ADUser -Name "Prabhu Armugam" -GivenName "Prabhu" -Surname "Armugam" -DisplayName "Prabhu Armugam" -SamAccountName "PArmugam" -UserPrincipalName "PArmugam@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
             New-ADUser -Name "Nishighandha" -GivenName "Nishighandha" -Surname "Kulkarni" -DisplayName "Nishighandha Kulkarni"-SamAccountName "NKulkarni" -UserPrincipalName "NKulkarni@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
             New-ADUser -Name "Dinesh Govindu" -GivenName "Dinesh" -Surname "Govindu" -DisplayName "Dinesh Govindu" -SamAccountName "DGovindu" -UserPrincipalName "DGovindu@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
             New-ADUser -Name "Aravind Manoharan" -GivenName "Aravind" -Surname "Manoharan" -DisplayName "Aravind Manoharan" -SamAccountName "AManoharan" -UserPrincipalName "AManoharan@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
             New-ADUser -Name "Ajmal Firdose" -GivenName "Ajmal" -Surname "Firdose" -DisplayName "Ajmal Firdose" -SamAccountName "AFirdose" -UserPrincipalName "AFirdose@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
-            New-ADUser -Name "James Scott" -GivenName "James" -Surname "Scott" -DisplayName "James Scott" -SamAccountName "JScott" -UserPrincipalName "JScott@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;'
+            New-ADUser -Name "James Scott" -GivenName "James" -Surname "Scott" -DisplayName "James Scott" -SamAccountName "JScott" -UserPrincipalName "JScott@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
+'@
 
-$Users4 =   '$Code = "LLTP";
-            $Domain = $Code + "AMI";
+$Users3 = $Users3A.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
+
+$Users4A = @'
             New-ADUser -Name "Pavithra Ramani" -GivenName "Pavithra" -Surname "Ramani" -DisplayName "Pavithra Ramani" -SamAccountName "PRamani" -UserPrincipalName "PRamani@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
             New-ADUser -Name "Muthuraman" -GivenName "Muthuraman" -Surname "Pattavarayan" -DisplayName "Muthuraman Pattavarayan" -SamAccountName "MPattavarayan" -UserPrincipalName "MPattavarayan@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
             New-ADUser -Name "MadhanKumar" -GivenName "MadhanKumar" -Surname "Murugesan" -DisplayName "MadhanKumar Murugesan" -SamAccountName "MMurugesan" -UserPrincipalName "MMurugesan@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
             New-ADUser -Name "Kevin Nail" -GivenName "Kevin" -Surname "Nail" -DisplayName "Kevin Nail" -UserPrincipalName "KNail@$Domain.local" -SamAccountName "KNail" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
             New-ADUser -Name "Matt Elliott" -GivenName "Matt" -Surname "Elliott" -DisplayName "Matt Elliott" -UserPrincipalName "MElliott@$Domain.local" -SamAccountName "Melliott" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
-            New-ADUser -Name "Lance Pelton" -GivenName "Lance" -Surname "Pelton" -DisplayName "Lance Pelton" -UserPrincipalName "LPelton@$Domain.local" -SamAccountName "LPelton" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;'
+            New-ADUser -Name "Lance Pelton" -GivenName "Lance" -Surname "Pelton" -DisplayName "Lance Pelton" -UserPrincipalName "LPelton@$Domain.local" -SamAccountName "LPelton" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
+'@
 
+$Users4 = $Users4A.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
-$Users5 =   '$Code = "LLTP";
-            $Domain = $Code + "AMI";
+$Users5A =   @'
             New-ADUser -Name "Sateesh Poojari" -GivenName "Sateesh" -Surname "Poojari" -DisplayName "Sateesh Poojari" -SamAccountName "Spoojari"  -UserPrincipalName "SPoojari@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
             New-ADUser -Name "Shahab Khan" -GivenName "Shahab" -Surname "Khan" -DisplayName "Shahab Khan" -SamAccountName "SKhan"  -UserPrincipalName "SKhan@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
             New-ADUser -Name "Subbaraman" -GivenName "Subbaraman" -Surname "Apparsami" -DisplayName "Subbaraman Apparsami" -SamAccountName "SApparsami"  -UserPrincipalName "SApparsami@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
             New-ADUser -Name "Syed Rizvi" -GivenName "Syed" -Surname "Rizvi" -DisplayName "Syed Rizvi" -SamAccountName "SRizvi"  -UserPrincipalName "SRizvi@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
             New-ADUser -Name "Bence Bihari" -GivenName "Bence" -Surname "Bihari" -DisplayName "Bence Bihari" -SamAccountName "BBihari"  -UserPrincipalName "BBihari@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
             New-ADUser -Name "Senthil Natarajan" -GivenName "Senthil" -Surname "Natarajan" -DisplayName "Senthil Natarajan" -SamAccountName "SNatarajan"  -UserPrincipalName "SNatarajan@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
-            New-ADUser -Name "Tom Moldovan" -GivenName "Tom" -Surname "Moldovan" -DisplayName "Tom Moldovan" -SamAccountName "TMoldovan"  -UserPrincipalName "TMoldovan@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;'           
+            New-ADUser -Name "Tom Moldovan" -GivenName "Tom" -Surname "Moldovan" -DisplayName "Tom Moldovan" -SamAccountName "TMoldovan"  -UserPrincipalName "TMoldovan@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Users,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
+'@           
 
+$Users5 = $Users5A.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
-$Users6 =   '$Code = "LLTP";
-            $Domain = $Code + "AMI";
+$Users6A =   @'
             New-ADUser -Name "nmsconfig" -GivenName "nmsconfig" -Surname "nmsconfig" -DisplayName "nmsconfig" -SamAccountName "nmsconfig"  -UserPrincipalName "nmsconfig@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
             New-ADUser -Name "RDS_Interface" -GivenName "RDS_Interface" -Surname "RDS_Interface" -DisplayName "RDS_Interface" -SamAccountName "RDS_Interface"  -UserPrincipalName "RDS_Interface@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
-            New-ADUser -Name "swsamsvc" -GivenName "swsamsvc" -Surname "swsamsvc" -DisplayName "swsamsvc" -SamAccountName "swsamsvc"  -UserPrincipalName "swsamsvc@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Itron,DC=$Domain,DC=local" -Enabled 1;'
+            New-ADUser -Name "swsamsvc" -GivenName "swsamsvc" -Surname "swsamsvc" -DisplayName "swsamsvc" -SamAccountName "swsamsvc"  -UserPrincipalName "swsamsvc@$Domain.local" -AccountPassword (ConvertTo-SecureString -AsPlainText "Temp1234" -Force) -PasswordNeverExpires 1 -Path "OU=Service_Accounts,OU=Itron,DC=$Domain,DC=local" -Enabled 1;
+'@
+
+$Users6 = $Users6A.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
 $GroupAdd1 = 'Add-ADGroupMember -Identity "Domain Admins" -Members @("PArmugam","NKulkarni","DGovindu","AManoharan","AFirdose","JScott","PRamani","MPattavarayan","MMurugesan","KNail","MElliott","LPelton","SPoojari","SKhan","SApparsami","SRizvi","BBihari","SNatarajan","TMoldovan")'
 
-$GroupAdd2 = '$Code = "LLTP"     
-              $CA = $Code + "PCASVC";
-              $IEE2 = $Code + "PIEEDA";
-              $IEE = $Code + "PIEEDB";  
-              $FCS = $Code + "PFVCSVC";
-              $IEE3 = $Code + "PIEESVC";
-              $ISM = $Code + "PISMAdmin";
-              $ISM2 = $Code + "PISMDB";
-              $ISM3 = $Code + "PISMEXTCon";
-              $ISM4 = $Code + "PISMSVC";
-              $OW = $Code + "POWAPP";
-              $OW2 = $Code + "POWDB";
-              $Group1 = $Code + "_ServiceAccount";
-              $Group2 = $Code  + "_APP_P_IEE_Admin";
-              $Group3 = $Code + "_APP_P_IEE_User";
-              $Group4 = $Code + "_APP_P_ISM_Admin";
-              $Group5 = $Code + "_APP_P_ISM_User";
-              $Group6 = $Code + "_APP_P_OWCEUI_Admin";
-              $Group7 = $Code + "_APP_P_OWCEUI_User";
+$GroupAdd2A = @'
+              $IEE2 = "$Code" + "PIEEDA";
+              $IEE = "$Code" + "PIEEDB";  
+              $FCS = "$Code" + "PFVCSVC";
+              $IEE3 = "$Code" + "PIEESVC";
+              $ISM = "$Code" + "PISMAdmin";
+              $ISM2 = "$Code" + "PISMDB";
+              $ISM3 = "$Code" + "PISMEXTCon";
+              $ISM4 = "$Code" + "PISMSVC";
+              $OW = "$Code" + "POWAPP";
+              $OW2 = "$Code" + "POWDB";
+              $Group1 = "$Code" + "_ServiceAccount";
+              $Group2 = "$Code"  + "_APP_P_IEE_Admin";
+              $Group3 = "$Code" + "_APP_P_IEE_User";
+              $Group4 = "$Code" + "_APP_P_ISM_Admin";
+              $Group5 = "$Code" + "_APP_P_ISM_User";
+              $Group6 = "$Code" + "_APP_P_OWCEUI_Admin";
+              $Group7 = "$Code" + "_APP_P_OWCEUI_User";
               Add-ADGroupMember -Identity $Group1 -Members @("$CA","$FCS","$IEE3","$IEE","$ISM2","$ISM3","$ISM4");
               Add-ADGroupMember -Identity $Group2 -Members @("$IEE2");
               Add-ADGroupMember -Identity $Group3 -Members @("$IEE2");
               Add-ADGroupMember -Identity $Group4 -Members @("$ISM");
               Add-ADGroupMember -Identity $Group5 -Members @("$ISM");
               Add-ADGroupMember -Identity $Group6 -Members @("$OW");
-              Add-ADGroupMember -Identity $Group7 -Members @("$OW");'
+              Add-ADGroupMember -Identity $Group7 -Members @("$OW");
+'@
 
-$GroupAddTest2 = '$Code = "LLTP"     
-              $CA = $Code + "TCASVC";
-              $IEE2 = $Code + "TIEEDA";
-              $IEE = $Code + "TIEEDB";  
-              $FCS = $Code + "TFVCSVC";
-              $IEE3 = $Code + "TIEESVC";
-              $ISM = $Code + "TISMAdmin";
-              $ISM2 = $Code + "TISMDB";
-              $ISM3 = $Code + "TISMEXTCon";
-              $ISM4 = $Code + "TISMSVC";
-              $OW = $Code + "TOWAPP";
-              $OW2 = $Code + "TOWDB";
-              $Group1 = $Code + "_ServiceAccount";
-              $Group2 = $Code  + "_APP_T_IEE_Admin";
-              $Group3 = $Code + "_APP_T_IEE_User";
-              $Group4 = $Code + "_APP_T_ISM_Admin";
-              $Group5 = $Code + "_APP_T_ISM_User";
-              $Group6 = $Code + "_APP_T_OWCEUI_Admin";
-              $Group7 = $Code + "_APP_T_OWCEUI_User";
-              Add-ADGroupMember -Identity $Group1 -Members @("$CA","$FCS","$IEE3","$IEE","$ISM2","$ISM3","$ISM4");
-              Add-ADGroupMember -Identity $Group2 -Members @("$IEE2");
-              Add-ADGroupMember -Identity $Group3 -Members @("$IEE2");
-              Add-ADGroupMember -Identity $Group4 -Members @("$ISM");
-              Add-ADGroupMember -Identity $Group5 -Members @("$ISM");
-              Add-ADGroupMember -Identity $Group6 -Members @("$OW");
-              Add-ADGroupMember -Identity $Group7 -Members @("$OW");'
+$GroupAdd2 = $GroupAdd2A.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
-$GroupAddDev2 = '$Code = "LLTP"     
-              $CA = $Code + "DCASVC";
-              $IEE2 = $Code + "DIEEDA";
-              $IEE = $Code + "DIEEDB";  
-              $FCS = $Code + "DFVCSVC";
-              $IEE3 = $Code + "DIEESVC";
-              $ISM = $Code + "DISMAdmin";
-              $ISM2 = $Code + "DISMDB";
-              $ISM3 = $Code + "DISMEXTCon";
-              $ISM4 = $Code + "DISMSVC";
-              $OW = $Code + "DOWAPP";
-              $OW2 = $Code + "DOWDB";
-              $Group1 = $Code + "_ServiceAccount";
-              $Group2 = $Code  + "_APP_D_IEE_Admin";
-              $Group3 = $Code + "_APP_D_IEE_User";
-              $Group4 = $Code + "_APP_D_ISM_Admin";
-              $Group5 = $Code + "_APP_D_ISM_User";
-              $Group6 = $Code + "_APP_D_OWCEUI_Admin";
-              $Group7 = $Code + "_APP_D_OWCEUI_User";
-              Add-ADGroupMember -Identity $Group1 -Members @("$CA","$FCS","$IEE3","$IEE","$ISM2","$ISM3","$ISM4");
-              Add-ADGroupMember -Identity $Group2 -Members @("$IEE2");
-              Add-ADGroupMember -Identity $Group3 -Members @("$IEE2");
-              Add-ADGroupMember -Identity $Group4 -Members @("$ISM");
-              Add-ADGroupMember -Identity $Group5 -Members @("$ISM");
-              Add-ADGroupMember -Identity $Group6 -Members @("$OW");
-              Add-ADGroupMember -Identity $Group7 -Members @("$OW");'
 
-$GroupAddQA2 = '$Code = "LLTP"     
-              $CA = $Code + "QACASVC";
-              $IEE2 = $Code + "QAIEEDA";
-              $IEE = $Code + "QAIEEDB";  
-              $FCS = $Code + "QAFVCSVC";
-              $IEE3 = $Code + "QAIEESVC";
-              $ISM = $Code + "QAISMAdmin";
-              $ISM2 = $Code + "QAISMDB";
-              $ISM3 = $Code + "QAISMEXTCon";
-              $ISM4 = $Code + "QAISMSVC";
-              $OW = $Code + "QAOWAPP";
-              $OW2 = $Code + "QAOWDB";
-              $Group1 = $Code + "_ServiceAccount";
-              $Group2 = $Code  + "_APP_QA_IEE_Admin";
-              $Group3 = $Code + "_APP_QA_IEE_User";
-              $Group4 = $Code + "_APP_QA_ISM_Admin";
-              $Group5 = $Code + "_APP_QA_ISM_User";
-              $Group6 = $Code + "_APP_QA_OWCEUI_Admin";
-              $Group7 = $Code + "_APP_QA_OWCEUI_User";
+$GroupAddTest2A = @'    
+              $CA = "$Code" + "TCASVC";
+              $IEE2 = "$Code" + "TIEEDA";
+              $IEE = "$Code" + "TIEEDB";  
+              $FCS = "$Code" + "TFVCSVC";
+              $IEE3 = "$Code" + "TIEESVC";
+              $ISM = "$Code" + "TISMAdmin";
+              $ISM2 = "$Code" + "TISMDB";
+              $ISM3 = "$Code" + "TISMEXTCon";
+              $ISM4 = "$Code" + "TISMSVC";
+              $OW = "$Code" + "TOWAPP";
+              $OW2 = "$Code" + "TOWDB";
+              $Group1 = "$Code" + "_ServiceAccount";
+              $Group2 = "$Code"  + "_APP_T_IEE_Admin";
+              $Group3 = "$Code" + "_APP_T_IEE_User";
+              $Group4 = "$Code" + "_APP_T_ISM_Admin";
+              $Group5 = "$Code" + "_APP_T_ISM_User";
+              $Group6 = "$Code" + "_APP_T_OWCEUI_Admin";
+              $Group7 = "$Code" + "_APP_T_OWCEUI_User";
               Add-ADGroupMember -Identity $Group1 -Members @("$CA","$FCS","$IEE3","$IEE","$ISM2","$ISM3","$ISM4");
               Add-ADGroupMember -Identity $Group2 -Members @("$IEE2");
               Add-ADGroupMember -Identity $Group3 -Members @("$IEE2");
               Add-ADGroupMember -Identity $Group4 -Members @("$ISM");
               Add-ADGroupMember -Identity $Group5 -Members @("$ISM");
               Add-ADGroupMember -Identity $Group6 -Members @("$OW");
-              Add-ADGroupMember -Identity $Group7 -Members @("$OW");'
+              Add-ADGroupMember -Identity $Group7 -Members @("$OW");
+'@
+
+$GroupAddTest2 = $GroupAddTest2A.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
+
+$GroupAddDev2A = @'  
+              $CA = "$Code" + "DCASVC";
+              $IEE2 = "$Code" + "DIEEDA";
+              $IEE = "$Code" + "DIEEDB";  
+              $FCS = "$Code" + "DFVCSVC";
+              $IEE3 = "$Code" + "DIEESVC";
+              $ISM = "$Code" + "DISMAdmin";
+              $ISM2 = "$Code" + "DISMDB";
+              $ISM3 = "$Code" + "DISMEXTCon";
+              $ISM4 = "$Code" + "DISMSVC";
+              $OW = "$Code" + "DOWAPP";
+              $OW2 = "$Code" + "DOWDB";
+              $Group1 = "$Code" + "_ServiceAccount";
+              $Group2 = "$Code"  + "_APP_D_IEE_Admin";
+              $Group3 = "$Code" + "_APP_D_IEE_User";
+              $Group4 = "$Code" + "_APP_D_ISM_Admin";
+              $Group5 = "$Code" + "_APP_D_ISM_User";
+              $Group6 = "$Code" + "_APP_D_OWCEUI_Admin";
+              $Group7 = "$Code" + "_APP_D_OWCEUI_User";
+              Add-ADGroupMember -Identity $Group1 -Members @("$CA","$FCS","$IEE3","$IEE","$ISM2","$ISM3","$ISM4");
+              Add-ADGroupMember -Identity $Group2 -Members @("$IEE2");
+              Add-ADGroupMember -Identity $Group3 -Members @("$IEE2");
+              Add-ADGroupMember -Identity $Group4 -Members @("$ISM");
+              Add-ADGroupMember -Identity $Group5 -Members @("$ISM");
+              Add-ADGroupMember -Identity $Group6 -Members @("$OW");
+              Add-ADGroupMember -Identity $Group7 -Members @("$OW");
+'@
+
+$GroupAddDev2 = $GroupAddDev2A.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
+
+$GroupAddQA2A = @'     
+              $CA = "$Code" + "QACASVC";
+              $IEE2 = "$Code" + "QAIEEDA";
+              $IEE = "$Code" + "QAIEEDB";  
+              $FCS = "$Code" + "QAFVCSVC";
+              $IEE3 = "$Code" + "QAIEESVC";
+              $ISM = "$Code" + "QAISMAdmin";
+              $ISM2 = "$Code" + "QAISMDB";
+              $ISM3 = "$Code" + "QAISMEXTCon";
+              $ISM4 = "$Code" + "QAISMSVC";
+              $OW = "$Code" + "QAOWAPP";
+              $OW2 = "$Code" + "QAOWDB";
+              $Group1 = "$Code" + "_ServiceAccount";
+              $Group2 = "$Code"  + "_APP_QA_IEE_Admin";
+              $Group3 = "$Code" + "_APP_QA_IEE_User";
+              $Group4 = "$Code" + "_APP_QA_ISM_Admin";
+              $Group5 = "$Code" + "_APP_QA_ISM_User";
+              $Group6 = "$Code" + "_APP_QA_OWCEUI_Admin";
+              $Group7 = "$Code" + "_APP_QA_OWCEUI_User";
+              Add-ADGroupMember -Identity $Group1 -Members @("$CA","$FCS","$IEE3","$IEE","$ISM2","$ISM3","$ISM4");
+              Add-ADGroupMember -Identity $Group2 -Members @("$IEE2");
+              Add-ADGroupMember -Identity $Group3 -Members @("$IEE2");
+              Add-ADGroupMember -Identity $Group4 -Members @("$ISM");
+              Add-ADGroupMember -Identity $Group5 -Members @("$ISM");
+              Add-ADGroupMember -Identity $Group6 -Members @("$OW");
+              Add-ADGroupMember -Identity $Group7 -Members @("$OW");
+'@
+
+$GroupAddQA2 = $GroupAddQA2A.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
 #-----------------These 3 are password Resets-----------------------------------
 
-$PWReset = '$Code = "LLTP"
-            $Domain = $Code + "AMI"
+$PWResetA = @'
 CD C:\
 #This is the file that will be generated with the users account ID and the password generated.
 [String]$path= ".\SVCPasswords.txt"
@@ -687,10 +749,12 @@ Get-ADUser -Identity $Name |Set-ADUser -ChangePasswordAtLogon:$true
 #Here will write the info to the file, so you can communicate to your users the new password.
 Write-Output "UserID:$name `t Password:$NewPassword" `n`n|FT -AutoSize >>SVCPasswords.txt
 
-} '
+} 
+'@
 
-$PWReset2 = '$Code = "LLTP"
-            $Domain = $Code + "AMI"
+$PWReset = $PWResetA.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
+
+$PWReset2A = @'
 CD C:\
 #This is the file that will be generated with the users account ID and the password generated.
 [String]$path= ".\ItronSVCPasswords.txt"
@@ -721,10 +785,12 @@ Get-ADUser -Identity $Name |Set-ADUser -ChangePasswordAtLogon:$true
 #Here will write the info to the file, so you can communicate to your users the new password.
 Write-Output "UserID:$name `t Password:$NewPassword" `n`n|FT -AutoSize >>ItronSVCPasswords.txt
 
-} '
+} 
+'@
 
-$PWReset3 = '$Code = "LLTP"
-            $Domain = $Code + "AMI"
+$PWReset2 = $PWReset2A.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
+
+$PWReset3A = @'
 CD C:\
 #This is the file that will be generated with the users account ID and the password generated.
 [String]$path= ".\ItronEmployees.txt"
@@ -755,17 +821,19 @@ Get-ADUser -Identity $Name |Set-ADUser -ChangePasswordAtLogon:$true
 #Here will write the info to the file, so you can communicate to your users the new password.
 Write-Output "UserID:$name `t Password:$NewPassword" `n`n|FT -AutoSize >>ItronEmployees.txt
 
-} '
+} 
+'@
+
+$PWReset3 = $PWReset3A.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
 #-------------These Setup the GPO's----------------------------
 
-$GPO = '$Code = "LLTP"
-        $Domain = $Code + "AMI"
+$GPOA = @'
         New-GPO -name "2012 SMB1 Disable"
         New-GPO -name "Admin Hidden Files"
         New-GPO -name "Background"
         New-GPO -name "Backup Drive"
-        New-GPO -name "CUST-$Code"
+        New-GPO -name "CUST-"$Code""
         New-GPO -name "Itronms-TPLL"
         New-GPO -name "RDP End Disconnected Sessions"
         New-GPO -name "Security Policy - Domain"
@@ -778,19 +846,24 @@ $GPO = '$Code = "LLTP"
         Import-gpo -BackupId 247F1631-D48C-495A-8A24-EEEC35E89FF9 -Path C:\GPOBackup\ -TargetName "Itronms-TPLL" -MigrationTable C:\GPOBackup\MigTable.migtable
         Import-gpo -BackupId C45D8DB2-AE8F-4CAF-8EE7-A02C4BE95FED -Path C:\GPOBackup\ -TargetName "RDP End Disconnected Sessions"
         Import-gpo -BackupId EF583E60-DFA0-45C5-88DD-B8418464642E -Path C:\GPOBackup\ -TargetName "Security Policy - Domain"
-        Import-gpo -BackupId B81A062B-4744-4BED-AEC1-931B5E38AC88 -Path C:\GPOBackup\ -TargetName "UAC Disable"'
+        Import-gpo -BackupId B81A062B-4744-4BED-AEC1-931B5E38AC88 -Path C:\GPOBackup\ -TargetName "UAC Disable"
+'@
 
-$GPOLink  = '$Code = "LLTP";
-             $Domain = $Code + "AMI";
+$GPO = $GPOA.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
+
+$GPOLinkA  = @'
              New-GPLink -Name "2012 SMB1 Disable" -Target "DC=$Domain,DC=Local"; 
              New-GPLink -Name "Admin Hidden Files" -Target "DC=$Domain,DC=Local";
              New-GPLink -Name "Background" -Target "DC=$Domain,DC=Local";
              New-GPLink -Name "Backup Drive" -Target "DC=$Domain,DC=Local"; 
-             New-GPLink -Name "CUST-$Code" -Target "DC=$Domain,DC=Local"; 
+             New-GPLink -Name "CUST-"$Code"" -Target "DC=$Domain,DC=Local"; 
              New-GPLink -Name "Itronms-TPLL" -Target "DC=$Domain,DC=Local"; 
              New-GPLink -Name "RDP End Disconnected Sessions" -Target "DC=$Domain,DC=Local";
              New-GPLink -Name "Security Policy - Domain" -Target "DC=$Domain,DC=Local"; 
-             New-GPLink -Name "UAC Disable" -Target "DC=$Domain,DC=Local";'
+             New-GPLink -Name "UAC Disable" -Target "DC=$Domain,DC=Local";
+'@
+
+$GPOLink = $GPOLinkA.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
  $IPV6 = 'netsh int ipv6 set int Ethernet0 routerdiscovery=disable
 netsh int ipv6 set int Ethernet0 managedaddress=disable
@@ -946,10 +1019,14 @@ Wait-Tools -VM $DomainControllerVMName -TimeoutSeconds 300
 # NOTE - Another short sleep here to make sure that other services have time to come up after VMware Tools are ready. 
 Start-Sleep -Seconds 30
 
-Get-VM $DomainControllorVMName|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
-Get-VM $DomainControllorVMName|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
-Get-VM $DomainControllorVMName|Set-Annotation -CustomAttribute "Deployment Template" -Value Win2016Std-DTEUCS
+Get-VM $DomainControllerVMName|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $DomainControllerVMName|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $DomainControllerVMName|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $DomainControllerVMName|Set-Annotation -CustomAttribute "Deployment Template" -Value Win2016Std-DTEUCS
 
+Get-VM $DC02VMName|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
 Get-VM $DC02VMName|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
 Get-VM $DC02VMName|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
 Get-VM $DC02VMName|Set-Annotation -CustomAttribute "Deployment Template" -Value Win2016Std-DTEUCS
@@ -1026,13 +1103,7 @@ Write-Verbose -Message "Assigned DNS for VM [$DomainControllerVMName]" -Verbose
 
 Start-Sleep 30
 
-#This string has a known bug with the command so we just hide the error
-
-$ErrorActionPreference = "SilentlyContinue"
-
-Invoke-VMScript -ScriptText $JoinNewDomain -VM $DC02VMName -GuestCredential $DC02LocalCredential
-
-$ErrorActionPreference = "Continue"
+Invoke-VMScript -ScriptText $JoinNewDomain -VM $DC02VMName -ScriptType Powershell -GuestUser $DC02LocalUser -GuestPassword $DC02LocalPWord
 
 # Below sleep command is in place as the reboot needed from the above command doesn't always happen before the wait-tools command is run
 
@@ -1454,6 +1525,32 @@ Start-sleep -Seconds 30
 Start-VM $script:customer-$Char-SQL-DB1
 wait-tools -VM $script:customer-$Char-SQL-DB1
 remove-oscustomizationspec $script:customer-$Char-SQL-DB1 -confirm:$false
+
+New-VM -Name $script:customer-$Char-BACKUP -Template Backup-Template -ResourcePool $TargetCluster  -Location $Folder
+Get-NetworkAdapter $script:customer-$Char-BACKUP|Remove-NetworkAdapter -confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-BACKUP -NetworkName vLAN-1$script:customernumber-$NP-DB -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+
+Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-BACKUP
+Get-OSCustomizationSpec -Name $script:customer-$Char-BACKUP|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
+Get-OSCustomizationSpec -Name $script:customer-$Char-BACKUP |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.150.$UIP.20 -SubnetMask 255.255.255.0 -DefaultGateway 10.150.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-BACKUP |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
+
+Get-VM $script:customer-$Char-BACKUP|Set-VM -MemoryGB 8 -NumCpu 2 -OSCustomizationSpec $script:customer-$Char-BACKUP -Confirm:$false
+Get-VM $script:customer-$Char-BACKUP|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
+$DateTime=Get-Date
+Get-VM $script:customer-$Char-BACKUP|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
+Get-VM $script:customer-$Char-BACKUP|Set-Annotation -CustomAttribute "Deployment Script Version" -Value $Ver
+Get-VM $script:customer-$Char-BACKUP|Set-Annotation -CustomAttribute "Deployment Template" -Value Backup-Template
+
+$spec = New-Object -Type VMware.Vim.VirtualMachineConfigSpec -Property @{"NumCoresPerSocket" = 2}
+(get-VM $script:customer-$Char-BACKUP).ExtensionData.ReconfigVM_Task($spec)
+Write-Host $script:customer-$Char-BACKUP' Built:'
+Write-Host "Booting"
+Start-sleep -Seconds 30
+# Power On New VM
+Start-VM $script:customer-$Char-BACKUP
+wait-tools -VM $script:customer-$Char-BACKUP
+remove-oscustomizationspec $script:customer-$Char-BACKUP -confirm:$false
 
 Write-Verbose -Message "Deploying FND-APP Server" -Verbose
 

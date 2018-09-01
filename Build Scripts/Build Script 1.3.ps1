@@ -1,4 +1,4 @@
-﻿#Script Version 1.3
+﻿#Script Version
 $Ver = "v1.3"
 
 # ------vCenter Targeting Varibles and Connection Commands Below------
@@ -374,7 +374,7 @@ $Group3Test = $Group3TestA.Replace('$Code',$script:customer).Replace('$Domain',$
 $Group3DevA = @'
                $Admin = "$Code" + "_Admin"
                $OW = "$Code" + "_APP_D_OWCEUI_Admin"
-               $OW2 = $Code + "_APP_D_OWCEUI_User"
+               $OW2 = "$Code" + "_APP_D_OWCEUI_User"
                $DBA = "$Code" + "_DBA"
                $DBU =  "$Code" + "_DBU"
                $TS = "$Code" + "_TS_User"

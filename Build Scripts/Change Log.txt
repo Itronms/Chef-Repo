@@ -1,8 +1,0 @@
-Version 1.3
-
-*With the use of pushing arguments with a here-string I was able to use variables remotely so the first change is pretty big for ease of use*
--No longer needs any sort of modification within the script itself you can just run it and answer the prompts
-- Added Backup Server to list of VM’s Built
-- Can now build Dev, Test QA and Production Environments
-- Hopefully resolved the issue where DC02 fails to join the domain.(Have not seen it on my end)
--Added correct versioning to the Script so VM’s will display which version they where created on (Script will fail if the version is older then what is out there when it pulls the data from custom attributes)

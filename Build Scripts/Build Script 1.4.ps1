@@ -1,5 +1,5 @@
 ﻿#Script Version
-$Ver = "v1.3"
+$Ver = "v1.4"
 
 # ------vCenter Targeting Varibles and Connection Commands Below------
 # This section insures that the PowerCLI PowerShell Modules are currently active. The pipe to Out-Null can be removed if you desire additional
@@ -13,6 +13,26 @@ $User = $creds.UserName
 
 # connect to vCenter
 Connect-VIserver esxtpll-vc01.itronms.local -Credential $creds
+
+Function Get-Largest()
+{
+$gldatastores = Get-VMHost -Location $_.cluster|Get-Datastore| where {$_.name -notlike "*AFF*"}|Select Name,FreeSpaceGB
+ 
+#Sets some static info
+$LargestFreeSpace = "0"
+$LargestDatastore = $null
+ 
+#Performs the calculation of which datastore has most free space
+foreach ($gldatastore in $gldatastores) {
+    if ($gldatastore.FreeSpaceGB -gt $LargestFreeSpace) { 
+            $LargestFreeSpace = $gldatastore.FreeSpaceGB
+            $LargestDatastore = $gldatastore.name
+            }
+        }
+        return $LargestDatastore
+    }
+
+$Datastore = Get-Largest
  
 ######################################################-User-Definable Variables-In-This-Section-##########################################################################################
 
@@ -89,7 +109,10 @@ if ($script:Cluster -eq 'P') { $Folder = $script:customer}
 if ($script:Cluster -eq 'NP') { $Folder = "$script:customer-NP"}
 
 New-Folder -Name $Folder -Location Customers
- 
+
+
+$Lin1 = "root"
+$Lin2 = ConvertTo-SecureString -String "cl0ckw!SE" -AsPlainText -Force 
  
 # ------This section contains the commands for defining the IP and networking settings for the new virtual machines------
 # NOTE: The below IPs and Interface Names need to be updated for your environment. 
@@ -117,7 +140,24 @@ Set-DnsClientServerAddress -InterfaceAlias "Ethernet0" -ServerAddresses("10.50.$
 '@
 $DNSSettings = $DNSSettings1.Replace('$IP',$UIP)
 
+$FND1 = "$script:customer-$Char-FND-APP"
+$FND2 = "$script:customer-$Char-FND-DB"
+$TPS  = "$script:customer-$Char-TPS"
 
+$Record1 = @'
+Add-DnsServerResourceRecordA -Name $FND -IPv4Address 10.50.$IP.33 -ZoneName $DomainName -CreatePtr
+'@
+$Record = $Record1.Replace('$DomainName',$Dom).Replace('$IP',$UIP).Replace('$FND',$FND1)
+
+$Record2 = @'
+Add-DnsServerResourceRecordA -Name $FNDDB -IPv4Address 10.150.$IP.33 -ZoneName $DomainName -CreatePtr
+'@
+$RecordDB = $Record2.Replace('$DomainName',$Dom).Replace('$IP',$UIP).Replace('$FNDDB',$FND2)
+
+$Record3 = @'
+Add-DnsServerResourceRecordA -Name $TP -IPv4Address 10.250.$IP.17 -ZoneName $DomainName -CreatePtr
+'@
+$RecordTPS = $Record3.Replace('$DomainName',$Dom).Replace('$IP',$UIP).Replace('$TP',$TPS)
  
  
 # ------This Section Sets the Credentials to be used to connect to Guest VMs that are NOT part of a Domain------
@@ -865,7 +905,8 @@ $GPOLinkA  = @'
 
 $GPOLink = $GPOLinkA.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
- $IPV6 = 'netsh int ipv6 set int Ethernet0 routerdiscovery=disable
+ $IPV61 = @'
+ netsh int ipv6 set int Ethernet0 routerdiscovery=disable
 netsh int ipv6 set int Ethernet0 managedaddress=disable
 
 Get-AdComputer -Filter {Enabled -eq $True -and OperatingSystem -like "*Windows*" -and Name -notlike "*-DC01"} | Foreach {
@@ -933,7 +974,64 @@ Get-AdComputer -Filter {Enabled -eq $True -and OperatingSystem -like "*Windows*"
     }
 }
 Get-AdComputer -Filter{Enabled -eq $True -and OperatingSystem -like "*Windows*"} | Foreach { invoke-command -computername $_.Name -Scriptblock {hostname; ipconfig /flushdns}}
-dnscmd localhost /zoneprint CPUTAMI.LOCAL |Select-String fdfa:ffff:0'
+dnscmd localhost /zoneprint $Domain |Select-String fdfa:ffff:0
+'@
+$IPV6 = IPV61.Replace('$Domain',$Dom)
+
+$Expire = 'Set-ADUser -Identity IHostAdmin -PasswordNeverExpires $True'
+
+$Mount1 = @'
+          echo "10.150.$IP.20:/FND /backup nfs auto 0 0" >> /etc/fstab
+'@
+
+$Mount = $Mount1.Replace('$IP',$UIP)
+
+$FNDV62 = @'
+          echo "IPV6ADDR=fdfa:ffff:0:$vlan:10:50:$IP:33/64" >> /etc/sysconfig/network-scripts/ifcfg-ens192
+'@
+
+$FNDV6 = $FNDV62.Replace('$IP',$UIP).Replace('$vlan',$script:customernumber)
+
+$FNDGateway1 = @'
+            echo "IPV6_DEFAULTGW=fdfa:ffff:0:$vlan:10:50:$IP:1" >> /etc/sysconfig/network-scripts/ifcfg-ens192
+'@
+$FNDGateway = $FNDGateway1.Replace('$IP',$UIP).Replace('$vlan',$script:customernumber)
+
+$FNDDNS1 = @'
+            echo "DNS3=fdfa:ffff:0:$vlan:10:50:$IP:11" >> /etc/sysconfig/network-scripts/ifcfg-ens192
+'@
+$FNDDNS = $FNDDNS1.Replace('$IP',$UIP).Replace('$vlan',$script:customernumber)
+
+$FNDDNS12 = @'
+            echo "DNS4=fdfa:ffff:0:$vlan:10:50:$IP:12" >> /etc/sysconfig/network-scripts/ifcfg-ens192
+'@
+$FNDDNS2 = $FNDDNS12.Replace('$IP',$UIP).Replace('$vlan',$script:customernumber)
+
+
+$FNDDBV62 = @'
+          echo "IPV6ADDR=fdfa:ffff:0:1$vlan:10:150:$IP:33/64" >> /etc/sysconfig/network-scripts/ifcfg-ens192
+'@
+
+$FNDDBV6 = $FNDDBV62.Replace('$IP',$UIP).Replace('$vlan',$script:customernumber)
+
+
+$FNDDBGateway1 = @'
+            echo "IPV6_DEFAULTGW=fdfa:ffff:0:1$vlan:10:150:$IP:1" >> /etc/sysconfig/network-scripts/ifcfg-ens192
+'@
+$FNDDBGateway = $FNDDBGateway1.Replace('$IP',$UIP).Replace('c$vlan',$script:customernumber)
+
+
+$TPSV62 = @'
+          echo "IPV6ADDR=fdfa:ffff:0:2$vlan:10:250:$IP:17/64" >> /etc/sysconfig/network-scripts/ifcfg-ens192
+'@
+
+$TPSV6 = $TPSV62.Replace('$IP',$UIP).Replace('$vlan',$script:customernumber)
+
+
+$TPSGateway1 = @'
+            echo "IPV6_DEFAULTGW=fdfa:ffff:0:2$vlan:10:250:$IP:1" >> /etc/sysconfig/network-scripts/ifcfg-ens192
+'@
+$TPSGateway = $TPSGateway1.Replace('$IP',$UIP).Replace('$vlan',$script:customernumber)
 
 #########################################################################################################################################################################################
 
@@ -945,7 +1043,7 @@ dnscmd localhost /zoneprint CPUTAMI.LOCAL |Select-String fdfa:ffff:0'
 
 Write-Verbose -Message "Deploying Virtual Machine with Name: [$DomainControllerVMName] using Template: [$SourceVMTemplate] and Customization Specification: [$SourceCustomSpec] on Cluster: [$TargetCluster] and waiting for completion" -Verbose
 
-New-VM -Name $DomainControllerVMName -Template $SourceVMTemplate -ResourcePool $TargetCluster -OSCustomizationSpec $SourceCustomSpec 
+New-VM -Name $DomainControllerVMName -Template $SourceVMTemplate -ResourcePool $TargetCluster -Datastore $Datastore -OSCustomizationSpec $SourceCustomSpec 
 
 Write-Verbose -Message "Virtual Machine $DomainControllerVMName Deployed. Powering On" -Verbose
 
@@ -955,7 +1053,7 @@ Start-VM -VM $DomainControllerVMName
 
 Write-Verbose -Message "Deploying Virtual Machine with Name: [$DC02VMName] using Template: [$SourceVMTemplate] and Customization Specification: [$SourceCustomSpec] on Cluster: [$TargetCluster] and waiting for completion" -Verbose
 
-New-VM -Name $DC02VMName -Template $SourceVMTemplate -ResourcePool $TargetCluster -OSCustomizationSpec $SourceCustomSpec
+New-VM -Name $DC02VMName -Template $SourceVMTemplate -ResourcePool $TargetCluster -Datastore $Datastore -OSCustomizationSpec $SourceCustomSpec
 
 Write-Verbose -Message "Virtual Machine $DC02VMName Deployed. Powering On" -Verbose
 
@@ -1275,13 +1373,13 @@ Write-Verbose -Message "Deploying VM's for New Domain" -Verbose
 
 Write-Verbose -Message "Deploying ECC-CA Server" -Verbose
 
-New-VM -Name $script:customer-$Char-ECC-CA -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-ECC-CA -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-ECC-CA|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-ECC-CA -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
 Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-ECC-CA 
 Get-OSCustomizationSpec -Name $script:customer-$Char-ECC-CA|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
-Get-OSCustomizationSpec -Name $script:customer-$Char-ECC-CA |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.14 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
+Get-OSCustomizationSpec -Name $script:customer-$Char-ECC-CA |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.18 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
 Get-OSCustomizationSpec -Name $script:customer-$Char-ECC-CA |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
 
 Get-VM $script:customer-$Char-ECC-CA|Set-VM -MemoryGB 8 -NumCpu 2 -OSCustomizationSpec $script:customer-$Char-ECC-CA -Confirm:$false
@@ -1303,7 +1401,7 @@ remove-oscustomizationspec $script:customer-$Char-ECC-CA -confirm:$false
 
 Write-Verbose -Message "Deploying RSA-CA Server" -Verbose
 
-New-VM -Name $script:customer-$Char-RSA-CA -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-RSA-CA -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-RSA-CA|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-RSA-CA -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
@@ -1331,7 +1429,7 @@ remove-oscustomizationspec $script:customer-$Char-RSA-CA -confirm:$false
 
 Write-Verbose -Message "Deploying NPS Server" -Verbose
 
-New-VM -Name $script:customer-$Char-NPS -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-NPS -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-NPS|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-NPS -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
@@ -1359,7 +1457,7 @@ remove-oscustomizationspec $script:customer-$Char-NPS -confirm:$false
 
 Write-Verbose -Message "Deploying WIFI-CA Server" -Verbose
 
-New-VM -Name $script:customer-$Char-WIFI-CA -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-WIFI-CA -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-WIFI-CA|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-WIFI-CA -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
@@ -1387,7 +1485,7 @@ remove-oscustomizationspec $script:customer-$Char-WIFI-CA -confirm:$false
 
 Write-Verbose -Message "Deploying RDS01 Server" -Verbose
 
-New-VM -Name $script:customer-$Char-RDS01 -Template Win2016Std-DTEUCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-RDS01 -Template Win2016Std-DTEUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-RDS01|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-RDS01 -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
@@ -1416,7 +1514,7 @@ remove-oscustomizationspec $script:customer-$Char-RDS01 -confirm:$false
 
 Write-Verbose -Message "Deploying OW-CM Server" -Verbose
 
-New-VM -Name $script:customer-$Char-OW-CM -Template OWOC-41-APP-UCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-OW-CM -Template OWOC-41-APP-UCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-OW-CM|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-OW-CM -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
@@ -1444,7 +1542,7 @@ remove-oscustomizationspec $script:customer-$Char-OW-CM -confirm:$false
 
 Write-Verbose -Message "Deploying SQL-DB2 Server" -Verbose
 
-New-VM -Name $script:customer-$Char-SQL-DB2 -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-SQL-DB2 -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-SQL-DB2|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-SQL-DB2 -NetworkName vLAN-1$script:customernumber-$NP-DB -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
@@ -1472,7 +1570,7 @@ remove-oscustomizationspec $script:customer-$Char-SQL-DB2 -confirm:$false
 
 Write-Verbose -Message "Deploying ISM-APP Server" -Verbose
 
-New-VM -Name $script:customer-$Char-ISM-APP -Template ISM-34-APP-UCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-ISM-APP -Template ISM-34-APP-UCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-ISM-APP|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-ISM-APP -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
@@ -1500,7 +1598,7 @@ remove-oscustomizationspec $script:customer-$Char-ISM-APP -confirm:$false
 
 Write-Verbose -Message "Deploying SQL-DB1 Server" -Verbose
 
-New-VM -Name $script:customer-$Char-SQL-DB1 -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-SQL-DB1 -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-SQL-DB1|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-SQL-DB1 -NetworkName vLAN-1$script:customernumber-$NP-DB -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
@@ -1526,11 +1624,13 @@ Start-VM $script:customer-$Char-SQL-DB1
 wait-tools -VM $script:customer-$Char-SQL-DB1
 remove-oscustomizationspec $script:customer-$Char-SQL-DB1 -confirm:$false
 
-New-VM -Name $script:customer-$Char-BACKUP -Template Backup-Template -ResourcePool $TargetCluster  -Location $Folder
+Write-Verbose -Message "Deploying BACKUP Server" -Verbose
+
+New-VM -Name $script:customer-$Char-BACKUP -Template Backup-Template -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-BACKUP|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-BACKUP -NetworkName vLAN-1$script:customernumber-$NP-DB -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
-Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-BACKUP
+Get-OSCustomizationSpec -Name Win2016Std-DTE-Baseline|New-OSCustomizationSpec -Name $script:customer-$Char-BACKUP
 Get-OSCustomizationSpec -Name $script:customer-$Char-BACKUP|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
 Get-OSCustomizationSpec -Name $script:customer-$Char-BACKUP |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.150.$UIP.20 -SubnetMask 255.255.255.0 -DefaultGateway 10.150.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
 Get-OSCustomizationSpec -Name $script:customer-$Char-BACKUP |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
@@ -1554,9 +1654,9 @@ remove-oscustomizationspec $script:customer-$Char-BACKUP -confirm:$false
 
 Write-Verbose -Message "Deploying FND-APP Server" -Verbose
 
-New-VM -Name $script:customer-$Char-FND-APP -Template RHEL7.3-Full-UCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-FND-APP -Template RHEL7.3-Full-UCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-FND-APP|Remove-NetworkAdapter -confirm:$false
-New-NetworkAdapter -VM $script:customer-$Char-FND-APP -NetworkName vLAN-2$script:customernumber-$NP-DMZ -Type Vmxnet3 -StartConnected:$True -Confirm:$false
+New-NetworkAdapter -VM $script:customer-$Char-FND-APP -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
 Get-OSCustomizationSpec -Name RHEL7.3-Full|New-OSCustomizationSpec -Name $script:customer-$Char-FND-APP
 Get-OSCustomizationSpec -Name $script:customer-$Char-FND-APP|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
@@ -1583,7 +1683,7 @@ remove-oscustomizationspec $script:customer-$Char-FND-APP -confirm:$false
 
 Write-Verbose -Message "Deploying FND-DB Server" -Verbose
 
-New-VM -Name $script:customer-$Char-FND-DB -Template RHEL-7.3-Full-GUI-Oracle12c-UCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-FND-DB -Template RHEL-7.3-Full-GUI-Oracle12c-UCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-FND-DB|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-FND-DB -NetworkName vLAN-1$script:customernumber-$NP-DB -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
@@ -1611,7 +1711,7 @@ remove-oscustomizationspec $script:customer-$Char-FND-DB -confirm:$false
 
 Write-Verbose -Message "Deploying TPS Server" -Verbose
 
-New-VM -Name $script:customer-$Char-TPS -Template RHEL7.3-Full-UCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-TPS -Template RHEL7.3-Full-UCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-TPS|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-TPS -NetworkName vLAN-2$script:customernumber-$NP-DMZ -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
@@ -1641,7 +1741,7 @@ if ($FCS -eq 'Yes') {
 
 Write-Verbose -Message "Deploying FCS-APP Server" -Verbose
 
-New-VM -Name $script:customer-$Char-FCS-APP -Template FCS-APP-UCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-FCS-APP -Template FCS-APP-UCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-FCS-APP|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-FCS-APP -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
@@ -1671,7 +1771,7 @@ remove-oscustomizationspec $script:customer-$Char-FCS-APP -confirm:$false
 if ($IEE -eq 'Yes') {
 Write-Verbose -Message "Deploying IEE-APP Server" -Verbose
 
-New-VM -Name $script:customer-$Char-IEE-APP -Template IEE-82-APP-UCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-IEE-APP -Template IEE-82-APP-UCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-IEE-APP|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-IEE-APP -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
@@ -1699,7 +1799,7 @@ remove-oscustomizationspec $script:customer-$Char-IEE-APP -confirm:$false
 
 Write-Verbose -Message "Deploying IEE-DB Server" -Verbose
 
-New-VM -Name $script:customer-$Char-IEE-DB -Template IEE-82-DB-UCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-IEE-DB -Template IEE-82-DB-UCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-IEE-DB|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-IEE-DB -NetworkName vLAN-1$script:customernumber-$NP-DB -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
@@ -1729,7 +1829,7 @@ remove-oscustomizationspec $script:customer-$Char-IEE-DB -confirm:$false
 if($PM -eq 'Yes'){
 Write-Verbose -Message "Deploying PM-AGT Server" -Verbose
 
-New-VM -Name $script:customer-$Char-PM-AGT -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-PM-AGT -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-PM-AGT|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-PM-AGT -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
@@ -1757,7 +1857,7 @@ remove-oscustomizationspec $script:customer-$Char-PM-AGT -confirm:$false
 
 Write-Verbose -Message "Deploying PM-HUB Server" -Verbose
 
-New-VM -Name $script:customer-$Char-PM-HUB -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-PM-HUB -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-PM-HUB|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-PM-HUB -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
@@ -1785,7 +1885,7 @@ remove-oscustomizationspec $script:customer-$Char-PM-HUB -confirm:$false
 
 Write-Verbose -Message "Deploying PM-ID Server" -Verbose
 
-New-VM -Name $script:customer-$Char-PM-ID -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-PM-ID -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-PM-ID|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-PM-ID -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
@@ -1813,7 +1913,7 @@ remove-oscustomizationspec $script:customer-$Char-PM-ID -confirm:$false
 
 Write-Verbose -Message "Deploying PM-MQ Server" -Verbose
 
-New-VM -Name $script:customer-$Char-PM-MQ -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-PM-MQ -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-PM-MQ|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-PM-MQ -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
@@ -1841,7 +1941,7 @@ remove-oscustomizationspec $script:customer-$Char-PM-MQ -confirm:$false
 
 Write-Verbose -Message "Deploying PM-APP Server" -Verbose
 
-New-VM -Name $script:customer-$Char-PM-APP -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-PM-APP -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-PM-APP|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-PM-APP -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
@@ -1869,7 +1969,7 @@ remove-oscustomizationspec $script:customer-$Char-PM-APP -confirm:$false
 
 Write-Verbose -Message "Deploying PM-DB Server" -Verbose
 
-New-VM -Name $script:customer-$Char-PM-DB -Template PM-SQL-NEW -ResourcePool $TargetCluster  -Location $Folder
+New-VM -Name $script:customer-$Char-PM-DB -Template PM-SQL-NEW -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-PM-DB|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-PM-DB -NetworkName vLAN-1$script:customernumber-$NP-DB -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
@@ -1901,5 +2001,59 @@ Write-Verbose -Message " All servers have been built doing post build clean up" 
 Write-Verbose -Message "Setting IPV6 Address" -Verbose
 
 Invoke-VMScript -ScriptText $IPV6 -VM $DomainControllerVMName -GuestUser $DomainUser2 -GuestPassword $DomainPWord2
+
+Invoke-VMScript -ScriptText $Expire -VM $DomainControllerVMName -GuestUser $DomainUser2 -GuestPassword $DomainPWord2
+
+Invoke-VMScript -ScriptText $Record -VM $DomainControllerVMName -GuestUser $DomainUser2 -GuestPassword $DomainPWord2
+
+Invoke-VMScript -ScriptText $RecordDB -VM $DomainControllerVMName -GuestUser $DomainUser2 -GuestPassword $DomainPWord2
+
+Invoke-VMScript -ScriptText $RecordTPS -VM $DomainControllerVMName -GuestUser $DomainUser2 -GuestPassword $DomainPWo
+
+Invoke-VMScript -ScriptText 'mkdir /backup' -Scripttype Bash -VM $script:customer-$Char-FND-DB -GuestUser $Lin1 -GuestPassword $Lin2
+
+Invoke-VMScript -ScriptText $Mount -Scripttype Bash -VM $script:customer-$Char-FND-DB -GuestUser $Lin1 -GuestPassword $Lin2
+
+Start-Sleep 15
+
+Invoke-VMScript -ScriptText 'mount -a' -Scripttype Bash -VM $script:customer-$Char-FND-DB -GuestUser $Lin1 -GuestPassword $Lin2
+
+Invoke-VMScript -ScriptText 'sed -i "s/IPV6_AUTOCONF=yes/IPV6_AUTOCONF=no/g" /etc/sysconfig/network-scripts/ifcfg-ens192' -Scripttype Bash -VM $FND1 -GuestUser $Lin1 -GuestPassword $Lin2
+
+Invoke-VMScript -ScriptText $FNDV6 -Scripttype Bash -VM $FND1 -GuestUser $Lin1 -GuestPassword $Lin2
+
+Invoke-VMScript -ScriptText $FNDGateway -Scripttype Bash -VM $FND1 -GuestUser $Lin1 -GuestPassword $Lin2
+
+Invoke-VMScript -ScriptText $FNDDNS -Scripttype Bash -VM $FND1 -GuestUser $Lin1 -GuestPassword $Lin2
+
+Invoke-VMScript -ScriptText $FNDDNS2 -Scripttype Bash -VM $FND1 -GuestUser $Lin1 -GuestPassword $Lin2
+
+Invoke-VMScript -ScriptText 'service network restart' -Scripttype Bash -VM $FND1 -GuestUser $Lin1 -GuestPassword $Lin2
+
+
+
+Invoke-VMScript -ScriptText 'sed -i "s/IPV6_AUTOCONF=yes/IPV6_AUTOCONF=no/g" /etc/sysconfig/network-scripts/ifcfg-ens192' -Scripttype Bash -VM $FND2 -GuestUser $Lin1 -GuestPassword $Lin2
+
+Invoke-VMScript -ScriptText $FNDDBV6 -Scripttype Bash -VM $FND2 -GuestUser $Lin1 -GuestPassword $Lin2
+
+Invoke-VMScript -ScriptText $FNDDBGateway -Scripttype Bash -VM $FND2 -GuestUser $Lin1 -GuestPassword $Lin2
+
+Invoke-VMScript -ScriptText $FNDDNS -Scripttype Bash -VM $FND2 -GuestUser $Lin1 -GuestPassword $Lin2
+
+Invoke-VMScript -ScriptText $FNDDNS2 -Scripttype Bash -VM $FND2 -GuestUser $Lin1 -GuestPassword $Lin2
+
+Invoke-VMScript -ScriptText 'service network restart' -Scripttype Bash -VM $FND2 -GuestUser $Lin1 -GuestPassword $Lin2
+
+Invoke-VMScript -ScriptText 'sed -i "s/IPV6_AUTOCONF=yes/IPV6_AUTOCONF=no/g" /etc/sysconfig/network-scripts/ifcfg-ens192' -Scripttype Bash -VM $TPS -GuestUser $Lin1 -GuestPassword $Lin2
+
+Invoke-VMScript -ScriptText $TPSV6 -Scripttype Bash -VM $TPS -GuestUser $Lin1 -GuestPassword $Lin2
+
+Invoke-VMScript -ScriptText $TPSGateway -Scripttype Bash -VM $TPS -GuestUser $Lin1 -GuestPassword $Lin2
+
+Invoke-VMScript -ScriptText $FNDDNS -Scripttype Bash -VM $TPS -GuestUser $Lin1 -GuestPassword $Lin2
+
+Invoke-VMScript -ScriptText $FNDDNS2 -Scripttype Bash -VM $TPS -GuestUser $Lin1 -GuestPassword $Lin2
+
+Invoke-VMScript -ScriptText 'service network restart' -Scripttype Bash -VM $TPS -GuestUser $Lin1 -GuestPassword $Lin2
 
 # End of Script

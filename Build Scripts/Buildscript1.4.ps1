@@ -1,4 +1,4 @@
-﻿#Script Version
+﻿# Script Version
 $Ver = "v1.4"
 
 # ------vCenter Targeting Varibles and Connection Commands Below------
@@ -1373,6 +1373,8 @@ Write-Verbose -Message "Deploying VM's for New Domain" -Verbose
 
 Write-Verbose -Message "Deploying ECC-CA Server" -Verbose
 
+$Datastore = Get-Largest
+
 New-VM -Name $script:customer-$Char-ECC-CA -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-ECC-CA|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-ECC-CA -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
@@ -1400,6 +1402,8 @@ wait-tools -VM $script:customer-$Char-ECC-CA
 remove-oscustomizationspec $script:customer-$Char-ECC-CA -confirm:$false
 
 Write-Verbose -Message "Deploying RSA-CA Server" -Verbose
+
+$Datastore = Get-Largest
 
 New-VM -Name $script:customer-$Char-RSA-CA -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-RSA-CA|Remove-NetworkAdapter -confirm:$false
@@ -1429,6 +1433,8 @@ remove-oscustomizationspec $script:customer-$Char-RSA-CA -confirm:$false
 
 Write-Verbose -Message "Deploying NPS Server" -Verbose
 
+$Datastore = Get-Largest
+
 New-VM -Name $script:customer-$Char-NPS -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-NPS|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-NPS -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
@@ -1457,6 +1463,8 @@ remove-oscustomizationspec $script:customer-$Char-NPS -confirm:$false
 
 Write-Verbose -Message "Deploying WIFI-CA Server" -Verbose
 
+$Datastore = Get-Largest
+
 New-VM -Name $script:customer-$Char-WIFI-CA -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-WIFI-CA|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-WIFI-CA -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
@@ -1484,6 +1492,8 @@ wait-tools -VM $script:customer-$Char-WIFI-CA
 remove-oscustomizationspec $script:customer-$Char-WIFI-CA -confirm:$false
 
 Write-Verbose -Message "Deploying RDS01 Server" -Verbose
+
+$Datastore = Get-Largest
 
 New-VM -Name $script:customer-$Char-RDS01 -Template Win2016Std-DTEUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-RDS01|Remove-NetworkAdapter -confirm:$false
@@ -1514,6 +1524,8 @@ remove-oscustomizationspec $script:customer-$Char-RDS01 -confirm:$false
 
 Write-Verbose -Message "Deploying OW-CM Server" -Verbose
 
+$Datastore = Get-Largest
+
 New-VM -Name $script:customer-$Char-OW-CM -Template OWOC-41-APP-UCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-OW-CM|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-OW-CM -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
@@ -1541,6 +1553,8 @@ wait-tools -VM $script:customer-$Char-OW-CM
 remove-oscustomizationspec $script:customer-$Char-OW-CM -confirm:$false
 
 Write-Verbose -Message "Deploying SQL-DB2 Server" -Verbose
+
+$Datastore = Get-Largest
 
 New-VM -Name $script:customer-$Char-SQL-DB2 -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-SQL-DB2|Remove-NetworkAdapter -confirm:$false
@@ -1570,6 +1584,8 @@ remove-oscustomizationspec $script:customer-$Char-SQL-DB2 -confirm:$false
 
 Write-Verbose -Message "Deploying ISM-APP Server" -Verbose
 
+$Datastore = Get-Largest
+
 New-VM -Name $script:customer-$Char-ISM-APP -Template ISM-34-APP-UCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-ISM-APP|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-ISM-APP -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
@@ -1597,6 +1613,8 @@ wait-tools -VM $script:customer-$Char-ISM-APP
 remove-oscustomizationspec $script:customer-$Char-ISM-APP -confirm:$false
 
 Write-Verbose -Message "Deploying SQL-DB1 Server" -Verbose
+
+$Datastore = Get-Largest
 
 New-VM -Name $script:customer-$Char-SQL-DB1 -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-SQL-DB1|Remove-NetworkAdapter -confirm:$false
@@ -1626,6 +1644,8 @@ remove-oscustomizationspec $script:customer-$Char-SQL-DB1 -confirm:$false
 
 Write-Verbose -Message "Deploying BACKUP Server" -Verbose
 
+$Datastore = Get-Largest
+
 New-VM -Name $script:customer-$Char-BACKUP -Template Backup-Template -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-BACKUP|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-BACKUP -NetworkName vLAN-1$script:customernumber-$NP-DB -Type Vmxnet3 -StartConnected:$True -Confirm:$false
@@ -1653,6 +1673,8 @@ wait-tools -VM $script:customer-$Char-BACKUP
 remove-oscustomizationspec $script:customer-$Char-BACKUP -confirm:$false
 
 Write-Verbose -Message "Deploying FND-APP Server" -Verbose
+
+$Datastore = Get-Largest
 
 New-VM -Name $script:customer-$Char-FND-APP -Template RHEL7.3-Full-UCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-FND-APP|Remove-NetworkAdapter -confirm:$false
@@ -1683,6 +1705,8 @@ remove-oscustomizationspec $script:customer-$Char-FND-APP -confirm:$false
 
 Write-Verbose -Message "Deploying FND-DB Server" -Verbose
 
+$Datastore = Get-Largest
+
 New-VM -Name $script:customer-$Char-FND-DB -Template RHEL-7.3-Full-GUI-Oracle12c-UCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-FND-DB|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-FND-DB -NetworkName vLAN-1$script:customernumber-$NP-DB -Type Vmxnet3 -StartConnected:$True -Confirm:$false
@@ -1710,6 +1734,8 @@ wait-tools -VM $script:customer-$Char-FND-DB
 remove-oscustomizationspec $script:customer-$Char-FND-DB -confirm:$false
 
 Write-Verbose -Message "Deploying TPS Server" -Verbose
+
+$Datastore = Get-Largest
 
 New-VM -Name $script:customer-$Char-TPS -Template RHEL7.3-Full-UCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-TPS|Remove-NetworkAdapter -confirm:$false
@@ -1741,6 +1767,8 @@ if ($FCS -eq 'Yes') {
 
 Write-Verbose -Message "Deploying FCS-APP Server" -Verbose
 
+$Datastore = Get-Largest
+
 New-VM -Name $script:customer-$Char-FCS-APP -Template FCS-APP-UCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-FCS-APP|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-FCS-APP -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
@@ -1771,6 +1799,8 @@ remove-oscustomizationspec $script:customer-$Char-FCS-APP -confirm:$false
 if ($IEE -eq 'Yes') {
 Write-Verbose -Message "Deploying IEE-APP Server" -Verbose
 
+$Datastore = Get-Largest
+
 New-VM -Name $script:customer-$Char-IEE-APP -Template IEE-82-APP-UCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-IEE-APP|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-IEE-APP -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
@@ -1798,6 +1828,8 @@ wait-tools -VM $script:customer-$Char-IEE-APP
 remove-oscustomizationspec $script:customer-$Char-IEE-APP -confirm:$false
 
 Write-Verbose -Message "Deploying IEE-DB Server" -Verbose
+
+$Datastore = Get-Largest
 
 New-VM -Name $script:customer-$Char-IEE-DB -Template IEE-82-DB-UCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-IEE-DB|Remove-NetworkAdapter -confirm:$false
@@ -1829,6 +1861,8 @@ remove-oscustomizationspec $script:customer-$Char-IEE-DB -confirm:$false
 if($PM -eq 'Yes'){
 Write-Verbose -Message "Deploying PM-AGT Server" -Verbose
 
+$Datastore = Get-Largest
+
 New-VM -Name $script:customer-$Char-PM-AGT -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-PM-AGT|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-PM-AGT -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
@@ -1856,6 +1890,8 @@ wait-tools -VM $script:customer-$Char-PM-AGT
 remove-oscustomizationspec $script:customer-$Char-PM-AGT -confirm:$false
 
 Write-Verbose -Message "Deploying PM-HUB Server" -Verbose
+
+$Datastore = Get-Largest
 
 New-VM -Name $script:customer-$Char-PM-HUB -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-PM-HUB|Remove-NetworkAdapter -confirm:$false
@@ -1885,6 +1921,8 @@ remove-oscustomizationspec $script:customer-$Char-PM-HUB -confirm:$false
 
 Write-Verbose -Message "Deploying PM-ID Server" -Verbose
 
+$Datastore = Get-Largest
+
 New-VM -Name $script:customer-$Char-PM-ID -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-PM-ID|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-PM-ID -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
@@ -1912,6 +1950,8 @@ wait-tools -VM $script:customer-$Char-PM-ID
 remove-oscustomizationspec $script:customer-$Char-PM-ID -confirm:$false
 
 Write-Verbose -Message "Deploying PM-MQ Server" -Verbose
+
+$Datastore = Get-Largest
 
 New-VM -Name $script:customer-$Char-PM-MQ -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-PM-MQ|Remove-NetworkAdapter -confirm:$false
@@ -1941,6 +1981,8 @@ remove-oscustomizationspec $script:customer-$Char-PM-MQ -confirm:$false
 
 Write-Verbose -Message "Deploying PM-APP Server" -Verbose
 
+$Datastore = Get-Largest
+
 New-VM -Name $script:customer-$Char-PM-APP -Template Win2012R2Std-GUIUCS -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-PM-APP|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-PM-APP -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
@@ -1968,6 +2010,8 @@ wait-tools -VM $script:customer-$Char-PM-APP
 remove-oscustomizationspec $script:customer-$Char-PM-APP -confirm:$false
 
 Write-Verbose -Message "Deploying PM-DB Server" -Verbose
+
+$Datastore = Get-Largest
 
 New-VM -Name $script:customer-$Char-PM-DB -Template PM-SQL-NEW -ResourcePool $TargetCluster -Datastore $Datastore  -Location $Folder
 Get-NetworkAdapter $script:customer-$Char-PM-DB|Remove-NetworkAdapter -confirm:$false
@@ -2014,7 +2058,7 @@ Invoke-VMScript -ScriptText 'mkdir /backup' -Scripttype Bash -VM $script:custome
 
 Invoke-VMScript -ScriptText $Mount -Scripttype Bash -VM $script:customer-$Char-FND-DB -GuestUser $Lin1 -GuestPassword $Lin2
 
-Start-Sleep 15
+Start-Sleep 20
 
 Invoke-VMScript -ScriptText 'mount -a' -Scripttype Bash -VM $script:customer-$Char-FND-DB -GuestUser $Lin1 -GuestPassword $Lin2
 

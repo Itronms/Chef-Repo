@@ -763,19 +763,15 @@ $GroupAddQA2 = $GroupAddQA2A.Replace('$Code',$script:customer).Replace('$Domain'
 
 $PWResetA = @'
 CD C:\
-#This is the file that will be generated with the users account ID and the password generated.
 [String]$path= ".\SVCPasswords.txt"
 
-#This will check if the file exist and will delete that file so a new one can be created from the scratch
-#If the doesnt exist will through an error saying that the file doesnt exist and will continue.
 if ($path -ne $null){Remove-Item $path}
 
 
 <# Required Assembly to Generate Passwords #>
 Add-Type -Assembly System.Web
-#In my case I created a OU for test purposes here it is.
-#You need to change it to meet your requirements.
-$OU="OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local"
+
+OU="OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local"
 
 #Get the users inside the OU specified in the Options Above
 $users=Get-ADUser -filter * -SearchBase $OU
@@ -802,15 +798,12 @@ CD C:\
 #This is the file that will be generated with the users account ID and the password generated.
 [String]$path= ".\ItronSVCPasswords.txt"
 
-#This will check if the file exist and will delete that file so a new one can be created from the scratch
-#If the doesnt exist will through an error saying that the file doesnt exist and will continue.
 if ($path -ne $null){Remove-Item $path}
 
 
 <# Required Assembly to Generate Passwords #>
 Add-Type -Assembly System.Web
-#In my case I created a OU for test purposes here it is.
-#You need to change it to meet your requirements.
+
 $OU="OU=Service_Accounts,OU=Itron,DC=$Domain,DC=local"
 
 #Get the users inside the OU specified in the Options Above
@@ -838,15 +831,13 @@ CD C:\
 #This is the file that will be generated with the users account ID and the password generated.
 [String]$path= ".\ItronEmployees.txt"
 
-#This will check if the file exist and will delete that file so a new one can be created from the scratch
-#If the doesnt exist will through an error saying that the file doesnt exist and will continue.
+
 if ($path -ne $null){Remove-Item $path}
 
 
 <# Required Assembly to Generate Passwords #>
 Add-Type -Assembly System.Web
-#In my case I created a OU for test purposes here it is.
-#You need to change it to meet your requirements.
+
 $OU="OU=Users,OU=Itron,DC=$Domain,DC=local"
 
 #Get the users inside the OU specified in the Options Above

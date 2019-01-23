@@ -1,5 +1,5 @@
 ﻿# Script Version
-$Ver = "v1.4"
+$Ver = "v1.4.2"
 
 # ------vCenter Targeting Varibles and Connection Commands Below------
 # This section insures that the PowerCLI PowerShell Modules are currently active. The pipe to Out-Null can be removed if you desire additional
@@ -14,25 +14,7 @@ $User = $creds.UserName
 # connect to vCenter
 Connect-VIserver esxtpll-vc01.itronms.local -Credential $creds
 
-Function Get-Largest()
-{
-$gldatastores = Get-VMHost -Location $_.cluster|Get-Datastore| where {$_.name -notlike "*AFF*"}|Select Name,FreeSpaceGB
- 
-#Sets some static info
-$LargestFreeSpace = "0"
-$LargestDatastore = $null
- 
-#Performs the calculation of which datastore has most free space
-foreach ($gldatastore in $gldatastores) {
-    if ($gldatastore.FreeSpaceGB -gt $LargestFreeSpace) { 
-            $LargestFreeSpace = $gldatastore.FreeSpaceGB
-            $LargestDatastore = $gldatastore.name
-            }
-        }
-        return $LargestDatastore
-    }
 
-$Datastore = Get-Largest
  
 ######################################################-User-Definable Variables-In-This-Section-##########################################################################################
 
@@ -100,6 +82,27 @@ New-VDPortgroup -VDSwitch Data-Dswitch -Name vLAN-2$script:customernumber-$NP-DM
 
 $SourceVMTemplate = Get-Template -Name "Win2016Std-DTEUCS"
 $SourceCustomSpec = Get-OSCustomizationSpec -Name "Win2016Std-DTE-Baseline"
+
+
+Function Get-Largest()
+{
+$gldatastores = Get-VMHost -Location $TargetCluster|Get-Datastore| where {$_.name -notlike "*Template*"}|Select Name,FreeSpaceGB
+ 
+#Sets some static info
+$LargestFreeSpace = "0"
+$LargestDatastore = $null
+ 
+#Performs the calculation of which datastore has most free space
+foreach ($gldatastore in $gldatastores) {
+    if ($gldatastore.FreeSpaceGB -gt $LargestFreeSpace) { 
+            $LargestFreeSpace = $gldatastore.FreeSpaceGB
+            $LargestDatastore = $gldatastore.name
+            }
+        }
+        return $LargestDatastore
+    }
+
+$Datastore = Get-Largest
 
 
 #Creates Customer Folder in Vcenter
@@ -760,19 +763,15 @@ $GroupAddQA2 = $GroupAddQA2A.Replace('$Code',$script:customer).Replace('$Domain'
 
 $PWResetA = @'
 CD C:\
-#This is the file that will be generated with the users account ID and the password generated.
 [String]$path= ".\SVCPasswords.txt"
 
-#This will check if the file exist and will delete that file so a new one can be created from the scratch
-#If the doesnt exist will through an error saying that the file doesnt exist and will continue.
 if ($path -ne $null){Remove-Item $path}
 
 
 <# Required Assembly to Generate Passwords #>
 Add-Type -Assembly System.Web
-#In my case I created a OU for test purposes here it is.
-#You need to change it to meet your requirements.
-$OU="OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local"
+
+OU="OU=Service_Accounts,OU=Customers,DC=$Domain,DC=local"
 
 #Get the users inside the OU specified in the Options Above
 $users=Get-ADUser -filter * -SearchBase $OU
@@ -799,15 +798,12 @@ CD C:\
 #This is the file that will be generated with the users account ID and the password generated.
 [String]$path= ".\ItronSVCPasswords.txt"
 
-#This will check if the file exist and will delete that file so a new one can be created from the scratch
-#If the doesnt exist will through an error saying that the file doesnt exist and will continue.
 if ($path -ne $null){Remove-Item $path}
 
 
 <# Required Assembly to Generate Passwords #>
 Add-Type -Assembly System.Web
-#In my case I created a OU for test purposes here it is.
-#You need to change it to meet your requirements.
+
 $OU="OU=Service_Accounts,OU=Itron,DC=$Domain,DC=local"
 
 #Get the users inside the OU specified in the Options Above
@@ -835,15 +831,13 @@ CD C:\
 #This is the file that will be generated with the users account ID and the password generated.
 [String]$path= ".\ItronEmployees.txt"
 
-#This will check if the file exist and will delete that file so a new one can be created from the scratch
-#If the doesnt exist will through an error saying that the file doesnt exist and will continue.
+
 if ($path -ne $null){Remove-Item $path}
 
 
 <# Required Assembly to Generate Passwords #>
 Add-Type -Assembly System.Web
-#In my case I created a OU for test purposes here it is.
-#You need to change it to meet your requirements.
+
 $OU="OU=Users,OU=Itron,DC=$Domain,DC=local"
 
 #Get the users inside the OU specified in the Options Above
@@ -901,11 +895,13 @@ $GPOLinkA  = @'
              New-GPLink -Name "RDP End Disconnected Sessions" -Target "DC=$Domain,DC=Local";
              New-GPLink -Name "Security Policy - Domain" -Target "DC=$Domain,DC=Local"; 
              New-GPLink -Name "UAC Disable" -Target "DC=$Domain,DC=Local";
+             New-GPO -Name "RDS 2016" -Comment "This is for the RDS Servers License" | new-gplink -Target "DC=$Domain,DC=Local";
+             New-GPO -Name "Server Level Access" | new-gplink -Target "DC=$Domain,DC=Local";  
 '@
 
 $GPOLink = $GPOLinkA.Replace('$Code',$script:customer).Replace('$Domain',$FQDN)
 
- $IPV61 = @'
+ $IPV6 = @'
 -errorAction Silently Continue
 Get-AdComputer -Filter {Enabled -eq $True -and OperatingSystem -like "*Windows*" -and Name -notlike "*-DC*"} | Foreach {
     Invoke-Command -ComputerName $_.Name -ScriptBlock { 
@@ -942,7 +938,6 @@ Get-AdComputer -Filter {Enabled -eq $True -and OperatingSystem -like "*Windows*"
 
     }
 '@
-$IPV6 = IPV61.Replace('$Domain',$Dom)
 
 $Expire = 'Set-ADUser -Identity IHostAdmin -PasswordNeverExpires $True'
 
@@ -1502,7 +1497,7 @@ Get-OSCustomizationSpec -Name $script:customer-$Char-OW-CM|Get-OSCustomizationNi
 Get-OSCustomizationSpec -Name $script:customer-$Char-OW-CM |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.31 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
 Get-OSCustomizationSpec -Name $script:customer-$Char-OW-CM |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
 
-Get-VM $script:customer-$Char-OW-CM|Set-VM -MemoryGB 8 -NumCpu 4 -OSCustomizationSpec $script:customer-$Char-OW-CM -Confirm:$false
+Get-VM $script:customer-$Char-OW-CM|Set-VM -MemoryGB -NumCpu 4 -OSCustomizationSpec $script:customer-$Char-OW-CM -Confirm:$false
 Get-VM $script:customer-$Char-OW-CM|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
 $DateTime=Get-Date
 Get-VM $script:customer-$Char-OW-CM|Set-Annotation -CustomAttribute "Created on" -Value $DateTime
@@ -1740,7 +1735,7 @@ New-VM -Name $script:customer-$Char-FCS-APP -Template FCS-APP-UCS -ResourcePool 
 Get-NetworkAdapter $script:customer-$Char-FCS-APP|Remove-NetworkAdapter -confirm:$false
 New-NetworkAdapter -VM $script:customer-$Char-FCS-APP -NetworkName vLAN-0$script:customernumber-$NP-App -Type Vmxnet3 -StartConnected:$True -Confirm:$false
 
-Get-OSCustomizationSpec -Name Win2012R2Std-GUI|New-OSCustomizationSpec -Name $script:customer-$Char-FCS-APP
+Get-OSCustomizationSpec -Name Win2016Std-DTE-Baseline|New-OSCustomizationSpec -Name $script:customer-$Char-FCS-APP
 Get-OSCustomizationSpec -Name $script:customer-$Char-FCS-APP|Get-OSCustomizationNicMapping|Remove-OSCustomizationNicMapping -confirm:$false
 Get-OSCustomizationSpec -Name $script:customer-$Char-FCS-APP |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.36 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
 Get-OSCustomizationSpec -Name $script:customer-$Char-FCS-APP |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12

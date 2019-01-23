@@ -1497,7 +1497,7 @@ Get-OSCustomizationSpec -Name $script:customer-$Char-OW-CM|Get-OSCustomizationNi
 Get-OSCustomizationSpec -Name $script:customer-$Char-OW-CM |New-OSCustomizationNicMapping -IpMode UseStaticIP -IpAddress 10.50.$UIP.31 -SubnetMask 255.255.255.0 -DefaultGateway 10.50.$UIP.1 -Dns 10.50.$UIP.11,10.50.$UIP.12 -Position 1
 Get-OSCustomizationSpec -Name $script:customer-$Char-OW-CM |Set-OSCUstomizationSpec -Domain $Dom -DomainCredentials $DomainCredential2 -DnsServer 10.50.$UIP.11,10.50.$UIP.12
 
-Get-VM $script:customer-$Char-OW-CM|Set-VM -MemoryGB -NumCpu 4 -OSCustomizationSpec $script:customer-$Char-OW-CM -Confirm:$false
+Get-VM $script:customer-$Char-OW-CM|Set-VM -MemoryGB 16 -NumCpu 4 -OSCustomizationSpec $script:customer-$Char-OW-CM -Confirm:$false
 Get-VM $script:customer-$Char-OW-CM|Set-Annotation -CustomAttribute "Created by" -Value "New VM Script(run as $User)"
 $DateTime=Get-Date
 Get-VM $script:customer-$Char-OW-CM|Set-Annotation -CustomAttribute "Created on" -Value $DateTime

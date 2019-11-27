@@ -1,0 +1,1 @@
+Move-Item -Path f:\xiserv\export\*.ENEL G:\inetpub\ftproot\localuser\ENEL
